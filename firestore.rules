@@ -1,0 +1,72 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* Helpers */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function roomRef(roomId) {
+      return get(/databases/$(database)/documents/rooms/$(roomId));
+    }
+
+    function playerRef(roomId, uid) {
+      return get(/databases/$(database)/documents/rooms/$(roomId)/players/$(uid));
+    }
+
+    function isOwner(roomId) {
+      // ownerUid peut venir de la ressource existante OU du payload de création
+      return isSignedIn() && (
+        (resource.data.ownerUid == request.auth.uid) ||
+        (request.resource.data.ownerUid == request.auth.uid)
+      );
+    }
+
+    // Accepte 'chasseur' (FR) OU 'hunter' (EN) pour compat code
+    function isHunter(roomId, uid) {
+      let p = playerRef(roomId, uid);
+      let roleFromPlayer = p.exists() ? p.data.role : null;
+      let roleFromMap = roomRef(roomId).data.roles[uid];
+
+      return roleFromPlayer == 'chasseur' || roleFromPlayer == 'hunter'
+          || roleFromMap    == 'chasseur' || roleFromMap    == 'hunter';
+    }
+
+    match /rooms/{roomId} {
+
+      // Lecture par tout utilisateur authentifié
+      allow read: if isSignedIn();
+
+      // Création: seul le futur owner peut créer (ownerUid doit = auth.uid)
+      allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
+
+      // Mise à jour: seulement l'owner
+      allow update: if isOwner(roomId);
+
+      // Suppression: interdite
+      allow delete: if false;
+
+      /* Subcollection: players */
+      match /players/{uid} {
+        allow read: if isSignedIn();
+        // Chaque joueur ne peut écrire que SON propre doc
+        allow create, update: if isSignedIn() && request.auth.uid == uid;
+        allow delete: if false;
+      }
+
+      /* Subcollection: events */
+      match /events/{eventId} {
+        allow read: if isSignedIn();
+
+        // Création d'un tag: uniquement le chasseur/hunter
+        allow create: if isSignedIn() && isHunter(roomId, request.auth.uid);
+
+        allow update, delete: if false;
+      }
+
+      
+    }
+  }
+}

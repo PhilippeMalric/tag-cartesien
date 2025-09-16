@@ -1,0 +1,85 @@
+@use '@angular/material' as mat;
+
+/* ====== Palette & Thèmes Material (M3) ====== */
+$primary: mat.$cyan-palette;
+
+$light-theme: mat.define-theme((
+  color: (theme-type: light, primary: $primary),
+  density: (scale: 0),
+  typography: (brand-family: 'Inter, Roboto, Arial, sans-serif'),
+));
+
+$dark-theme: mat.define-theme((
+  color: (theme-type: dark, primary: $primary),
+  density: (scale: 0),
+  typography: (brand-family: 'Inter, Roboto, Arial, sans-serif'),
+));
+
+/* ====== Application des styles Material ====== */
+/* Clair par défaut */
+:root {
+  @include mat.all-component-themes($light-theme);
+  color-scheme: light;
+}
+
+/* Sombre si <html> a data-theme="dark" OU la classe .dark */
+:root[data-theme="dark"],
+:root.dark {
+  @include mat.all-component-colors($dark-theme);
+  @include mat.all-component-typographies($dark-theme);
+  @include mat.all-component-densities($dark-theme);
+  color-scheme: dark;
+}
+
+/* ====== Variables CSS partagées (alignées sur tokens Material) ====== */
+/* Light */
+:root {
+  --bg:      var(--mat-sys-background);
+  --fg:      var(--mat-sys-on-background);
+  --card:    var(--mat-sys-surface);
+  --border:  var(--mat-sys-outline-variant);
+
+  /* Couleurs jeu – versions “light” */
+  --canvas-bg: #0b0d10;
+  --grid:      color-mix(in srgb, var(--mat-sys-outline-variant) 70%, white);
+  --axis:      color-mix(in srgb, var(--mat-sys-outline-variant) 55%, white);
+
+  --self:      var(--mat-sys-primary);
+  --hunter:    #d32f2f;
+  --other:     #7a7f89;
+  --tag-ring:  color-mix(in srgb, #d32f2f 35%, transparent);
+}
+
+/* Dark */
+:root[data-theme="dark"],
+:root.dark {
+  --bg:      var(--mat-sys-background);
+  --fg:      var(--mat-sys-on-background);
+  --card:    var(--mat-sys-surface-container-high);
+  --border:  var(--mat-sys-outline-variant);
+
+  /* Couleurs jeu – versions “dark” */
+  --canvas-bg: #0b0d10;
+  --grid:      color-mix(in srgb, var(--mat-sys-outline-variant) 35%, transparent);
+  --axis:      color-mix(in srgb, var(--mat-sys-outline-variant) 50%, transparent);
+
+  --self:      color-mix(in srgb, var(--mat-sys-primary) 75%, white);
+  --hunter:    #ff7676;
+  --other:     #9aa3af;
+  --tag-ring:  color-mix(in srgb, #ff7676 35%, transparent);
+}
+
+/* ====== Bases ====== */
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Icônes Material Symbols */
+.material-symbols-outlined {
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}

@@ -1,0 +1,64 @@
+<div class="auth-page">
+  <mat-card class="auth-card">
+    <mat-card-header class="auth-header">
+      <div class="hero-icon">
+        <mat-icon fontSet="material-symbols-outlined">sports_esports</mat-icon>
+      </div>
+      <div>
+        <mat-card-title class="title">Tag Cartésien</mat-card-title>
+        <mat-card-subtitle class="subtitle">Apprendre les coordonnées en s’amusant</mat-card-subtitle>
+      </div>
+    </mat-card-header>
+
+    <mat-divider></mat-divider>
+
+    <mat-card-content class="content">
+      <p class="intro">
+        Connecte-toi en anonyme pour rejoindre le lobby et commencer une partie.
+      </p>
+
+      <div class="form-grid">
+        <mat-form-field appearance="outline" class="fx1">
+          <mat-label>Nom d’affichage (optionnel)</mat-label>
+          <input matInput [formControl]="form.controls.displayName" placeholder="Ex.: Philippe" maxlength="32" />
+        </mat-form-field>
+      </div>
+
+      @if (error) {
+        <div class="alert error">
+          <mat-icon fontSet="material-symbols-outlined">error</mat-icon>
+          <span>{{ error }}</span>
+        </div>
+      }
+
+      @if (hint) {
+        <div class="alert hint">
+          <mat-icon fontSet="material-symbols-outlined">info</mat-icon>
+          <span>{{ hint }}</span>
+        </div>
+      }
+
+      @if (loading) {
+        <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+      }
+    </mat-card-content>
+
+    <mat-card-actions class="actions">
+      @if (!isLoggedIn) {
+        <button mat-raised-button color="primary" class="btn-main" (click)="loginAnon()" [disabled]="loading">
+          <mat-icon fontSet="material-symbols-outlined">login</mat-icon>
+          Connexion anonyme
+        </button>
+      } @else {
+        <button mat-stroked-button color="warn" (click)="logout()" [disabled]="loading">
+          <mat-icon fontSet="material-symbols-outlined">logout</mat-icon>
+          Se déconnecter
+        </button>
+        <button mat-raised-button color="accent" (click)="router.navigate(['/lobby'])">
+          <mat-icon fontSet="material-symbols-outlined">arrow_forward</mat-icon>
+          Aller au lobby
+        </button>
+      }
+    </mat-card-actions>
+  </mat-card>
+</div>

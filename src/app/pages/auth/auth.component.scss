@@ -1,0 +1,98 @@
+.auth-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+
+  /* Fond dark élégant qui utilise tes tokens Material */
+  background:
+    radial-gradient(1200px 520px at 50% -10%,
+      color-mix(in srgb, var(--mat-sys-primary) 14%, transparent),
+      transparent 70%),
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--mat-sys-surface) 90%, #0b0f14),
+      color-mix(in srgb, var(--mat-sys-surface) 100%, #0b0f14));
+  color: var(--mat-sys-on-surface);
+}
+
+.auth-card {
+  width: min(720px, 94vw);
+  border-radius: 18px;
+  overflow: hidden;
+
+  /* Surfaces sombres + contour subtile */
+  background: var(--mat-sys-surface-container-high);
+  border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 35%, transparent);
+  box-shadow:
+    0 10px 30px color-mix(in srgb, var(--mat-sys-primary) 10%, transparent),
+    0 2px 8px rgba(0,0,0,.25);
+}
+
+.auth-header {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  align-items: center;
+  padding: 16px 18px;
+}
+
+.hero-icon {
+  width: 54px; height: 54px; border-radius: 14px;
+  display: grid; place-items: center;
+  background: color-mix(in srgb, var(--mat-sys-primary) 20%, transparent);
+  color: var(--mat-sys-on-primary-container);
+}
+.hero-icon mat-icon { font-size: 30px; line-height: 1; }
+
+.title { font-weight: 800; letter-spacing: .2px; }
+.subtitle { opacity: .85; }
+
+.content {
+  display: grid;
+  gap: 16px;
+  padding: 16px 18px 0;
+}
+
+.intro { margin: 0; opacity: .9; }
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.alert {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: .95rem;
+}
+.alert mat-icon { margin-top: 2px; }
+
+.alert.error {
+  background: color-mix(in srgb, var(--mat-sys-error) 18%, transparent);
+  color: var(--mat-sys-error);
+}
+.alert.hint {
+  background: color-mix(in srgb, var(--mat-sys-primary) 18%, transparent);
+  color: var(--mat-sys-primary);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 0 18px 18px;
+  justify-content: flex-end;
+}
+
+.btn-main mat-icon { margin-right: 6px; }
+
+/* Mobile */
+@media (max-width: 640px) {
+  .actions { justify-content: stretch; }
+  .actions button { width: 100%; }
+}

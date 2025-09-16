@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tag cartésien</title>
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <script>
+      (function() {
+        try {
+          var saved = localStorage.getItem('theme');
+          var dark = saved ? (saved === 'dark')
+            : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var el = document.documentElement;
+          el.classList.toggle('dark', dark);
+          el.dataset.theme = dark ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
+
+  </head>
+  <body>
+    <app-root></app-root>
+  </body>
+</html>

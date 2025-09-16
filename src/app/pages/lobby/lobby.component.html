@@ -1,0 +1,129 @@
+<mat-toolbar color="primary">
+  <button mat-icon-button matTooltip="Basculer clair/sombre" (click)="theme.toggle()" aria-label="Basculer le thème">
+    <mat-icon fontSet="material-symbols-outlined">dark_mode</mat-icon>
+  </button>
+  <span class="ml8">Lobby</span>
+
+  <span class="spacer"></span>
+
+  <button mat-stroked-button color="accent" (click)="refresh()" [disabled]="loading" aria-label="Actualiser">
+    <mat-icon fontSet="material-symbols-outlined">refresh</mat-icon>
+    Actualiser
+  </button>
+</mat-toolbar>
+
+<div class="page">
+  <!-- Créer une salle -->
+  <mat-card class="card">
+    <mat-card-header>
+      <mat-card-title>Créer une salle</mat-card-title>
+      <mat-card-subtitle>Choisis un nom d’affichage et démarre une room</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content class="card-grid">
+      <mat-form-field appearance="outline" class="fx1">
+        <mat-label>Nom d’affichage</mat-label>
+        <input
+          matInput
+          [(ngModel)]="displayName"
+          placeholder="Ex.: Philippe"
+          (keyup.enter)="createRoom()"
+          aria-label="Nom d’affichage"
+        />
+      </mat-form-field>
+
+      <button
+        mat-raised-button
+        color="primary"
+        class="w-full sm-w-auto"
+        (click)="createRoom()"
+        [disabled]="!displayName || !displayName.trim()"
+        aria-label="Créer une salle"
+      >
+        <mat-icon fontSet="material-symbols-outlined">add</mat-icon>
+        Créer
+      </button>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Rejoindre une salle -->
+  <mat-card class="card">
+    <mat-card-header>
+      <mat-card-title>Rejoindre une salle</mat-card-title>
+      <mat-card-subtitle>Via un code ou la liste ci-dessous</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content class="join-grid">
+      <mat-form-field appearance="outline" class="fx1">
+        <mat-label>Code de salle</mat-label>
+        <input
+          matInput
+          [(ngModel)]="joinCode"
+          (ngModelChange)="onJoinCodeInput($event)"
+          (keyup.enter)="quickJoin()"
+          maxlength="8"
+          autocomplete="off"
+          placeholder="ABCD12"
+          aria-label="Code de salle"
+        />
+        <mat-hint>6–8 caractères alphanumériques</mat-hint>
+      </mat-form-field>
+
+      <button
+        mat-stroked-button
+        color="primary"
+        class="w-full sm-w-auto"
+        (click)="quickJoin()"
+        [disabled]="!(joinCode && joinCode.length >= 4)"
+        aria-label="Rejoindre avec le code"
+      >
+        <mat-icon fontSet="material-symbols-outlined">login</mat-icon>
+        Rejoindre
+      </button>
+    </mat-card-content>
+
+    <mat-divider></mat-divider>
+
+    <mat-card-content>
+      @if (loading) {
+        <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+      } @else {
+        @let rooms = (rooms$ | async) ?? [];
+
+        @if (rooms.length > 0) {
+          <mat-nav-list>
+            @for (r of rooms; track r.id) {
+              <button
+                mat-list-item
+                type="button"
+                class="room-item"
+                (click)="join(r)"
+                aria-label="Rejoindre la room {{ r.id }}"
+              >
+                <div matListItemTitle>
+                  Room #{{ r.id }} — {{ r.players ?? 0 }} joueur(s)
+                </div>
+                <div matListItemLine class="muted">
+                  Score cible: {{ r.targetScore }} · Limite: {{ r.timeLimit }}s · État: {{ r.state }}
+                </div>
+                <mat-icon matListItemIcon fontSet="material-symbols-outlined">arrow_forward</mat-icon>
+              </button>
+            }
+          </mat-nav-list>
+        } @else {
+          <div class="muted" style="display:flex;align-items:center;gap:8px;">
+            <mat-icon fontSet="material-symbols-outlined">info</mat-icon>
+            Aucune room pour le moment.
+          </div>
+        }
+      }
+    </mat-card-content>
+
+    <mat-card-actions align="end">
+      <button mat-button (click)="refresh()" [disabled]="loading" aria-label="Actualiser la liste">
+        <mat-icon fontSet="material-symbols-outlined">refresh</mat-icon>
+        Actualiser
+      </button>
+    </mat-card-actions>
+  </mat-card>
+</div>

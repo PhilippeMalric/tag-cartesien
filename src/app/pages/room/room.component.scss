@@ -1,0 +1,34 @@
+.page { max-width: 900px; margin: 16px auto; display: grid; gap: 16px; padding: 0 12px; }
+.card { border-radius: 12px; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.code { opacity: .7; }
+.owner-badge { opacity: .8; margin-right: 8px; }
+.spacer { flex: 1 1 auto; }
+.ml4 { margin-left: 4px; }
+.muted { opacity: .7; }
+
+/* Rôle chasseur mis en évidence */
+.hunter mat-icon[matListItemIcon] { color: var(--mat-sys-primary); }
+.hunter-chip {
+  background: color-mix(in srgb, var(--mat-sys-primary) 18%, transparent);
+  color: var(--mat-sys-primary);
+}
+.runner-chip {
+  background: color-mix(in srgb, var(--mat-sys-secondary) 14%, transparent);
+  color: var(--mat-sys-secondary);
+}
+
+.chip {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  .actions { justify-content: stretch; }
+  .actions button { width: 100%; }
+}

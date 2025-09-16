@@ -1,0 +1,75 @@
+.page {
+  max-width: 960px;
+  margin: 12px auto;
+  padding: 0 12px;
+  display: grid;
+  gap: 12px;
+}
+@supports (padding: max(0px)) {
+  .page {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+}
+
+.card { border-radius: 12px; }
+
+/* Grilles – mobile d’abord (une colonne) */
+.card-grid,
+.join-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+/* Items de la liste des rooms : confort tactile + états */
+.room-item {
+  text-align: left;
+  border-radius: 12px;
+  min-height: 56px;
+  width: 100%;
+  transition: background-color .2s ease;
+}
+.room-item:hover {
+  background: color-mix(in srgb, var(--mat-sys-primary) 6%, transparent);
+}
+.room-item:focus-visible {
+  outline: 2px solid var(--mat-sys-primary);
+  outline-offset: 2px;
+}
+
+/* Utilitaires */
+.fx1   { flex: 1 1 auto; }
+.spacer{ flex: 1 1 auto; }
+.ml8   { margin-left: 8px; }
+.muted { opacity: .75; }
+
+.w-full   { width: 100%; }
+.sm-w-auto{ width: 100%; } /* mobile: boutons plein largeur */
+
+/* ≥640px : deux colonnes pour les zones d’actions */
+@media (min-width: 640px) {
+  .page { gap: 16px; }
+  .card-grid,
+  .join-grid {
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+  }
+  .sm-w-auto { width: auto; } /* desktop: boutons auto */
+}
+
+/* ≥900px : largeur max alignée au design */
+@media (min-width: 900px) {
+  .page { max-width: 920px; }
+}
+
+/* Accessibilité : réduire les animations si demandé */
+@media (prefers-reduced-motion: reduce) {
+  .room-item { transition: none; }
+}
+
+/* Ajustement hover en dark mode */
+:root.dark .room-item:hover {
+  background: color-mix(in srgb, var(--mat-sys-primary) 10%, transparent);
+}
