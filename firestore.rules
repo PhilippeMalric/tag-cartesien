@@ -16,22 +16,29 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/rooms/$(roomId)/players/$(uid));
     }
 
+    // Owner défini UNIQUEMENT par l'état courant (resource), pas par la requête
     function isOwner(roomId) {
-      // ownerUid peut venir de la ressource existante OU du payload de création
-      return isSignedIn() && (
-        (resource.data.ownerUid == request.auth.uid) ||
-        (request.resource.data.ownerUid == request.auth.uid)
-      );
+      return isSignedIn() && roomRef(roomId).data.ownerUid == request.auth.uid;
     }
 
-    // Accepte 'chasseur' (FR) OU 'hunter' (EN) pour compat code
+    // Accepte 'chasseur' (FR) OU 'hunter' (EN) pour compat
     function isHunter(roomId, uid) {
       let p = playerRef(roomId, uid);
       let roleFromPlayer = p.exists() ? p.data.role : null;
       let roleFromMap = roomRef(roomId).data.roles[uid];
-
       return roleFromPlayer == 'chasseur' || roleFromPlayer == 'hunter'
           || roleFromMap    == 'chasseur' || roleFromMap    == 'hunter';
+    }
+
+    // Autoriser uniquement certaines clés à changer (pour UPDATE)
+    function onlyAllowedKeysChanged(allowedKeys) {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedKeys);
+    }
+
+    // Vérifie que 'ownerUid' ne change JAMAIS après création
+    function ownerUnchanged() {
+      return !('ownerUid' in request.resource.data) ||
+             request.resource.data.ownerUid == resource.data.ownerUid;
     }
 
     match /rooms/{roomId} {
@@ -42,17 +49,46 @@ service cloud.firestore {
       // Création: seul le futur owner peut créer (ownerUid doit = auth.uid)
       allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
 
-      // Mise à jour: seulement l'owner
-      allow update: if isOwner(roomId);
+      // Mise à jour: seulement l'owner ACTUEL, sans changer ownerUid,
+      // et uniquement sur la liste blanche ci-dessous
+      allow update: if isOwner(roomId)
+                    && ownerUnchanged()
+                    && onlyAllowedKeysChanged([
+                      'state',
+                      'targetScore',
+                      'roundEndAtMs',
+                      'roles',
+                      'timestamps',
+                      'startedAt',
+                      'rolesUpdatedAt'
+                    ]);
 
-      // Suppression: interdite
+      // Suppression: interdite (ou restreindre à l'owner si besoin)
       allow delete: if false;
 
       /* Subcollection: players */
       match /players/{uid} {
         allow read: if isSignedIn();
-        // Chaque joueur ne peut écrire que SON propre doc
-        allow create, update: if isSignedIn() && request.auth.uid == uid;
+
+        // CREATE: l’utilisateur crée SON doc et ne peut écrire que ces clés
+        // (on N'ÉCRIT PAS 'uid' côté client; l'ID du doc suffit)
+        allow create: if isSignedIn()
+                      && request.auth.uid == uid
+                      && request.resource.data.keys().hasOnly([
+                           'displayName',
+                           'ready',
+                           'iFrameUntilMs'
+                         ]);
+
+        // UPDATE: l’utilisateur ne peut modifier que ces clés
+        allow update: if isSignedIn()
+                      && request.auth.uid == uid
+                      && onlyAllowedKeysChanged([
+                           'displayName',
+                           'ready',
+                           'iFrameUntilMs'
+                         ]);
+
         allow delete: if false;
       }
 
@@ -60,13 +96,19 @@ service cloud.firestore {
       match /events/{eventId} {
         allow read: if isSignedIn();
 
-        // Création d'un tag: uniquement le chasseur/hunter
-        allow create: if isSignedIn() && isHunter(roomId, request.auth.uid);
+        // Création d'un tag: uniquement par le chasseur,
+        // et avec un schéma de données strict
+        allow create: if isSignedIn()
+                      && request.resource.data.type == 'tag'
+                      && request.resource.data.hunterUid == request.auth.uid
+                      && isHunter(roomId, request.auth.uid)
+                      && playerRef(roomId, request.resource.data.victimUid).exists()
+                      && request.resource.data.keys().hasOnly([
+                           'type','hunterUid','victimUid','x','y','ts'
+                         ]);
 
         allow update, delete: if false;
       }
-
-      
     }
   }
 }

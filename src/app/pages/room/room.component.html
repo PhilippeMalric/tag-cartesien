@@ -50,14 +50,14 @@
 
       @if (arr.length > 0) {
         <mat-list>
-          @for (p of arr; track p.id) {
+          @for (p of arr; track p.uid) {
             <mat-list-item [class.hunter]="p.roleResolved === 'chasseur'">
               <mat-icon matListItemIcon fontSet="material-symbols-outlined">
                 {{ p.roleResolved === 'chasseur' ? 'gps_fixed' : 'directions_run' }}
               </mat-icon>
 
               <div matListItemTitle>
-                <strong>{{ p.displayName || p.id }}</strong>
+                <strong>{{ p.displayName || p.uid }}</strong>
                 @if (p.roleResolved === 'chasseur') {
                   <span class="chip hunter-chip">Chasseur</span>
                 } @else if (p.roleResolved === 'chassé') {

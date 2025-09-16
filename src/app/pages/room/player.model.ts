@@ -1,7 +1,10 @@
+import { Role } from "./room.service";
+
 export type Player = {
-  id: string;
-  displayName?: string;
-  ready?: boolean;
-  role?: 'chasseur' | 'chassé' | null;
-  score?: number;
+   uid: string;
+    displayName: string;
+    ready?: boolean;
+    role?: Role;
+    score?: number;
+    iFrameUntilMs?: number;
 };
