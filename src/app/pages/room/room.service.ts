@@ -1,25 +1,29 @@
-import { Injectable, inject } from '@angular/core';
+import { EnvironmentInjector, Injectable, inject, runInInjectionContext } from '@angular/core';
 import { Auth as FirebaseAuth } from '@angular/fire/auth';
 import {
   Firestore, doc, docData, collection, collectionData, setDoc,
 } from '@angular/fire/firestore';
 import { serverTimestamp as fsServerTimestamp } from 'firebase/firestore';
-import { Observable, firstValueFrom } from 'rxjs';
+import { Observable, defer, firstValueFrom } from 'rxjs';
 import { Player } from './player.model';
 
 @Injectable({ providedIn: 'root' })
 export class RoomService {
   private fs = inject(Firestore);
   private auth = inject(FirebaseAuth);
-
+private env = inject(EnvironmentInjector);
   get uid(): string | undefined {
     return this.auth.currentUser?.uid || undefined;
   }
 
-  players$(roomId: string): Observable<Player[]> {
-    const playersColl = collection(this.fs, `rooms/${roomId}/players`);
-    return collectionData(playersColl, { idField: 'id' }) as Observable<Player[]>;
-  }
+  players$ = (roomId: string): Observable<Player[]> => {
+    return defer(() =>
+      runInInjectionContext(this.env, () => {
+        const coll = collection(this.fs, `rooms/${roomId}/players`);
+        return collectionData(coll, { idField: 'uid' }) as Observable<Player[]>;
+      })
+    );
+  };
 
   room$(roomId: string): Observable<any> {
     const roomRef = doc(this.fs, `rooms/${roomId}`);

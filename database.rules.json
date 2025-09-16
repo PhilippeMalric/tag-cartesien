@@ -1,50 +1,42 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": false,
 
-      {
-      "rules": {
-        "positions": {
-          "$matchId": {
-            ".read": "auth != null",
-            "$uid": {
-              ".read": "auth != null",
-              ".write": "auth != null && auth.uid === $uid"
-            }
-          }
-        },
-        "presence": {
-          "$roomId": {
-            ".read": "auth != null",
-            "$uid": {
-              ".write": "auth != null && auth.uid === $uid"
-            }
-          }
-        },
-        "roomsMeta": {
-          "$matchId": {
-            "ownerUid": {
-              ".read": "auth != null",
-              ".write": "auth != null && !data.exists()" 
-            }
-          }
-        },
-        "bots": {
-          "$matchId": {
-            ".read": "auth != null",
-            "$botId": {
-              ".write": "auth != null && root.child('roomsMeta/'+$matchId+'/ownerUid').val() === auth.uid"
-            }
-          }
-        }
-      },
-    
-
-    "probe": {
+    "positions": {
       "$matchId": {
-        ".read": "auth != null",
         "$uid": {
           ".read": "auth != null",
           ".write": "auth != null && auth.uid === $uid"
         }
       }
+    },
+
+    "presence": {
+      "$matchId": {
+        "$uid": {
+          ".read": "auth != null",
+          ".write": "auth != null && auth.uid === $uid"
+        }
+      }
+    },
+
+    "roomsMeta": {
+      "$matchId": {
+        "ownerUid": {
+          ".read": "auth != null",
+          ".write": "auth != null && !data.exists() && newData.isString() && newData.val() === auth.uid"
+        }
+      }
+    },
+
+    "bots": {
+      "$matchId": {
+        "$botId": {
+          ".read": "auth != null",
+          ".write": "auth != null && root.child('roomsMeta').child($matchId).child('ownerUid').val() === auth.uid"
+        }
+      }
     }
   }
-
+}

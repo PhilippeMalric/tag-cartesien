@@ -1,0 +1,73 @@
+.sb-container {
+  position: fixed;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 1000;
+  max-width: min(90vw, 360px);
+  pointer-events: none; // laisse passer les clics au canvas en dessous, sauf sur la carte
+}
+
+.sb-card {
+  pointer-events: auto;
+  backdrop-filter: blur(4px);
+  background: color-mix(in oklab, var(--mat-sys-surface, #fff) 80%, transparent);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+}
+
+.sb-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .25rem .25rem .25rem .5rem;
+
+  .sb-title {
+    display: flex;
+    gap: .5rem;
+    align-items: center;
+    font-weight: 600;
+  }
+}
+
+.sb-body {
+  padding: .25rem .5rem .5rem .5rem;
+}
+
+.sb-row {
+  display: grid;
+  grid-template-columns: 2rem 1fr 3.5rem;
+  align-items: center;
+  gap: .5rem;
+  padding: .35rem 0;
+
+  &.sb-head {
+    font-size: .85rem;
+    opacity: .75;
+  }
+
+  .col-rank {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .col-name {
+    display: flex; align-items: center; gap: .5rem;
+    .name.self { font-weight: 700; }
+    .emoji { margin-right: .25rem; }
+    .chip-self { height: 20px; font-size: 10px; line-height: 20px; }
+  }
+  .col-score {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
+}
+
+.sb-empty {
+  padding: .5rem;
+  opacity: .7;
+  font-style: italic;
+}
+
+.sb-collapsed .sb-body {
+  display: none;
+}

@@ -30,7 +30,7 @@ export class MatchService {
     );
   }
 
-  events$(matchId: string): Observable<TagEvent[]> {
+  events$ = (matchId: string): Observable<TagEvent[]> => {
     const eventsCol = collection(this.fs, `rooms/${matchId}/events`);
     const qEvents = query(eventsCol, orderBy('ts', 'desc'), limit(20));
     return collectionData(qEvents, { idField: 'id' }).pipe(
@@ -75,7 +75,7 @@ export class MatchService {
     await updateDoc(roomRef, { state: 'ended' });
   }
 
-  async endByTimer(matchId: string) {
+  endByTimer = async (matchId: string) =>  {
     const uid = this.uid; if (!uid) return;
     const roomRef = doc(this.fs, `rooms/${matchId}`);
     const snap = await getDoc(roomRef);

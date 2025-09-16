@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-set -e
-
-# Block committing real Angular env files
-if git diff --cached --name-only | grep -E '^src/environments/environment(\.prod)?\.ts$' >/dev/null; then
-  echo "❌ Refus du commit: n’ajoute pas tes fichiers d’environnement réels (environment.ts / environment.prod.ts)."
-  echo "   Utilise les fichiers *.example.ts et garde les vrais en local."
-  exit 1
-fi

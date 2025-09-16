@@ -25,6 +25,7 @@ import { PlayRenderer } from './play.renderer';
 import { Pos } from './play.models';
 import { setupPlay } from './play.setup';
 import type { RecentTag } from './play.types';
+import { ScoreboardOverlayComponent } from './ui/scoreboard-overlay/scoreboard-overlay.component';
 
 @Component({
   selector: 'app-play',
@@ -33,6 +34,7 @@ import type { RecentTag } from './play.types';
     CommonModule,
     MatToolbarModule, MatButtonModule, MatIconModule,
     MatChipsModule, MatProgressBarModule, MatTooltipModule,
+    ScoreboardOverlayComponent
   ],
   styleUrls: ['./play.component.scss'],
   templateUrl: './play.component.html',
