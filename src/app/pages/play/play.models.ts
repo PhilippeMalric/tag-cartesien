@@ -39,12 +39,18 @@ export const GAME_CONSTANTS = {
 } as const;
 
 
-export type RenderState = {
-  me: Pos;
-  others: Map<string, Pos>;
+export interface RenderState {
+  me: { x: number; y: number };
   role: 'chasseur' | 'chassé' | null;
-  invulnerableUntil: number;
+  others: Map<string, { x: number; y: number }>;
   tagRadius: number;
+  invulnerableUntil: number;
+  hunterUid: string | null;   // ← NEW
+}
+
+export const PLAY_COLORS = {
+  self: '#3fa7ff',           // toi-même (si tu en as un)
+  other: '#9aa0a6',          // autres joueurs “neutres” (gris)
+  hunter: '#ff7a00',         // 🔶 chasseur (orange)
+  victim: '#34a853',         // chassé (optionnel)
 };
-
-

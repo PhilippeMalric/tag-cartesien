@@ -224,6 +224,7 @@ export function setupPlay(ctx: PlayCtx): () => void {
         role: ctx.role,
         invulnerableUntil: ctx.invulnerableUntil,
         tagRadius: GAME_CONSTANTS.TAG_RADIUS,
+        hunterUid: ctx.hunterUid,            // ← NEW
       });
 
       rafId = requestAnimationFrame(loop);

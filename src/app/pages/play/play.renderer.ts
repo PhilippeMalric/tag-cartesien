@@ -7,12 +7,12 @@ export class PlayRenderer {
     const h = (canvas.height = canvas.clientHeight);
 
     const css = getComputedStyle(document.documentElement);
-    const colorGrid   = css.getPropertyValue('--grid').trim()   || '#eaeaea';
-    const colorAxis   = css.getPropertyValue('--axis').trim()   || '#ddd';
-    const colorOther  = css.getPropertyValue('--other').trim()  || '#888';
-    const colorSelf   = css.getPropertyValue('--self').trim()   || '#1976d2';
-    const colorHunter = css.getPropertyValue('--hunter').trim() || '#d32f2f';
-    const colorRing   = css.getPropertyValue('--tag-ring').trim() || 'rgba(211,47,47,.35)';
+    const colorGrid   = css.getPropertyValue('--grid').trim()      || '#eaeaea';
+    const colorAxis   = css.getPropertyValue('--axis').trim()      || '#ddd';
+    const colorOther  = css.getPropertyValue('--other').trim()     || '#888';
+    const colorSelf   = css.getPropertyValue('--self').trim()      || '#1976d2';
+    const colorHunter = css.getPropertyValue('--hunter').trim()    || '#ff7a00'; // ← orange
+    const colorRing   = css.getPropertyValue('--tag-ring').trim()  || 'rgba(211,47,47,.35)';
 
     ctx.clearRect(0, 0, w, h);
 
@@ -33,15 +33,16 @@ export class PlayRenderer {
     ctx.beginPath(); ctx.moveTo(cx - 50 * scale, cy); ctx.lineTo(cx + 50 * scale, cy); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(cx, cy - 50 * scale); ctx.lineTo(cx, cy + 50 * scale); ctx.stroke();
 
-    // autres
-    ctx.fillStyle = colorOther;
-    for (const p of state.others.values()) {
+    // autres (gris par défaut, orange si c'est le chasseur)
+    for (const [uid, p] of state.others) {
+      const isHunter = !!state.hunterUid && uid === state.hunterUid;
+      ctx.fillStyle = isHunter ? colorHunter : colorOther;
       ctx.beginPath();
       ctx.arc(cx + p.x * scale, cy + p.y * scale, 6, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // halo iFrame
+    // halo invulnérable (autour de "moi")
     if (performance.now() < state.invulnerableUntil) {
       const left = Math.max(0, state.invulnerableUntil - performance.now());
       const alpha = Math.max(0.15, Math.min(0.5, left / (state.invulnerableUntil ? left : 1)));
@@ -53,13 +54,13 @@ export class PlayRenderer {
       ctx.stroke();
     }
 
-    // moi
+    // moi (orange si je suis chasseur, sinon bleu)
     ctx.fillStyle = state.role === 'chasseur' ? colorHunter : colorSelf;
     ctx.beginPath();
     ctx.arc(cx + state.me.x * scale, cy + state.me.y * scale, 8, 0, Math.PI * 2);
     ctx.fill();
 
-    // anneau chasseur
+    // anneau de portée (seulement si je suis chasseur)
     if (state.role === 'chasseur') {
       ctx.strokeStyle = colorRing;
       ctx.beginPath();
