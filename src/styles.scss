@@ -54,7 +54,7 @@ $dark-theme: mat.define-theme((
 :root[data-theme="dark"],
 :root.dark {
   --bg:      var(--mat-sys-background);
-  --fg:      var(--mat-sys-on-background);
+  --fg:      white;
   --card:    var(--mat-sys-surface-container-high);
   --border:  var(--mat-sys-outline-variant);
 

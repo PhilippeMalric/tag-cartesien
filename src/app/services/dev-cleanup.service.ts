@@ -35,18 +35,20 @@ export class DevCleanupService {
    * Hypothèses: rooms/{roomId} possède { ownerUid, updatedAt }.
    * On supprime aussi la sous-collec players (jusqu’à 250 entrées par passe).
    */
-  async cleanOldRoomsFirestore(maxAgeMs = 2 * 60 * 60 * 1000): Promise<{ deleted: number }> {
+  async cleanOldRoomsFirestore(maxAgeMs = 2  ): Promise<{ deleted: number }> {
     const cutoff = Date.now() - maxAgeMs;
     const uid = this.auth.currentUser?.uid; // si tu veux filtrer par owner
     let totalDeleted = 0;
 
     while (true) {
       const roomsCol = collection(this.fs, 'rooms');
-      const q = uid
-        ? query(roomsCol, where('ownerUid', '==', uid), where('updatedAt', '<=', cutoff), limit(50))
-        : query(roomsCol, where('updatedAt', '<=', cutoff), limit(50));
+      console.log("snapFS",collection);
+      const q = query(roomsCol,  limit(50))
 
       const snap = await this.fsGetDocs(q);
+
+      console.log("snapFS",snap);
+      
       if (snap.empty) break;
 
       const batch = writeBatch(this.fs);
@@ -83,6 +85,8 @@ export class DevCleanupService {
   // dev-cleanup.service.ts — remplacer cleanOldRoomsRtdb par ceci
   async cleanOldRoomsRtdb(maxAgeMs = 2 * 60 * 60 * 1000): Promise<{ deleted: number }> {
     const cutoff = Date.now() - maxAgeMs;
+    console.log("cutoff",cutoff);
+    
     let totalDeleted = 0;
     const PAGE_SIZE = 200; // supprime jusqu’à 200 rooms par passe
 
@@ -94,11 +98,15 @@ export class DevCleanupService {
         endAt(cutoff),
         limitToFirst(PAGE_SIZE)
       );
+//console.log("q",q);
 
       // get() exécuté dans le bon contexte Angular (helper existant this.rtdbGet)
       const snap = await this.rtdbGet(q);
+      console.log("snap",snap);
+      
       if (!snap.exists()) break;
-
+      console.log("snap.exists");
+      
       // Multi-suppression en une seule update parent: { roomId: null, ... }
       const updates: Record<string, null> = {};
       snap.forEach(child => {
@@ -114,7 +122,8 @@ export class DevCleanupService {
 
       // boucle si d’autres anciennes rooms restent
     }
-
+    console.log("totalDeleted",totalDeleted);
+    
     return { deleted: totalDeleted };
   }
 

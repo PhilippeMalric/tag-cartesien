@@ -1,6 +1,21 @@
+/* ─────────────────────────────────────────────────────────
+   Toolbar
+   ───────────────────────────────────────────────────────── */
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  inset-inline: 0;
+}
+.title { margin-inline-start: 8px; font-weight: 600; }
+.spacer { flex: 1 1 auto; }
+
+/* ─────────────────────────────────────────────────────────
+   Page layout
+   ───────────────────────────────────────────────────────── */
 .page {
   max-width: 960px;
-  margin: 12px auto;
+  margin: 12px auto 72px; /* espace pour la FAB */
   padding: 0 12px;
   display: grid;
   gap: 12px;
@@ -12,9 +27,9 @@
   }
 }
 
-.card { border-radius: 12px; }
+.card { border-radius: 14px; }
 
-/* Grilles – mobile d’abord (une colonne) */
+/* Grilles — mobile d’abord (1 colonne) */
 .card-grid,
 .join-grid {
   display: grid;
@@ -23,32 +38,89 @@
   align-items: center;
 }
 
-/* Items de la liste des rooms : confort tactile + états */
+/* Boutons plus “touch-friendly” */
+.btn-primary,
+.btn-secondary {
+  width: 100%;
+  min-height: 48px;
+  justify-content: center;
+}
+.btn-text { margin-left: 6px; }
+.btn-ghost { min-height: 44px; }
+
+/* ─────────────────────────────────────────────────────────
+   Liste des rooms
+   ───────────────────────────────────────────────────────── */
+.rooms { padding-block: 0; }
+
 .room-item {
-  text-align: left;
+  padding-block: 10px; /* plus d’air */
   border-radius: 12px;
-  min-height: 56px;
+  min-height: 68px;
   width: 100%;
   transition: background-color .2s ease;
+  --hover-bg: color-mix(in srgb, var(--mat-sys-primary) 6%, transparent);
+  text-align: start;
 }
-.room-item:hover {
-  background: color-mix(in srgb, var(--mat-sys-primary) 6%, transparent);
+.room-item:hover { background: var(--hover-bg); }
+.room-item:focus-visible { outline: 2px solid var(--mat-sys-primary); outline-offset: 2px; }
+:root.dark .room-item:hover { --hover-bg: color-mix(in srgb, var(--mat-sys-primary) 10%, transparent); }
+
+/* Titre : id + joueurs (avec badge) */
+.room-title {
+  display: flex; align-items: center; gap: 8px;
+  font-weight: 700;
+  letter-spacing: .2px;
 }
-.room-item:focus-visible {
-  outline: 2px solid var(--mat-sys-primary);
-  outline-offset: 2px;
+.room-id { font-variant-numeric: tabular-nums; }
+.dot { opacity: .55; }
+
+.room-players { display: inline-flex; align-items: center; gap: 6px; }
+.meta-ic { font-size: 18px; height: 18px; width: 18px; opacity: .85; }
+
+/* Badge joueurs — renforce la lisibilité du nombre */
+::ng-deep .mat-badge-content {
+  font-weight: 700;
+  line-height: 1;
 }
 
-/* Utilitaires */
-.fx1   { flex: 1 1 auto; }
-.spacer{ flex: 1 1 auto; }
-.ml8   { margin-left: 8px; }
-.muted { opacity: .75; }
+/* Métadonnées sous forme de Mat Chips */
+.room-meta { margin-top: 4px; }
+.meta-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.meta-chips mat-chip mat-icon { margin-right: 6px; }
 
-.w-full   { width: 100%; }
-.sm-w-auto{ width: 100%; } /* mobile: boutons plein largeur */
+/* Actions à droite : cibles tactiles 48x48 */
+.actions {
+  display: flex; gap: 10px; align-items: center;
+}
+.action-btn {
+  width: 48px; height: 48px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
 
-/* ≥640px : deux colonnes pour les zones d’actions */
+/* État vide */
+.empty {
+  display: flex; align-items: center; gap: 8px;
+  opacity: .75; padding: 8px 0;
+}
+
+/* ─────────────────────────────────────────────────────────
+   FAB primaire (mobile)
+   ───────────────────────────────────────────────────────── */
+.fab {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 30;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Responsive
+   ───────────────────────────────────────────────────────── */
 @media (min-width: 640px) {
   .page { gap: 16px; }
   .card-grid,
@@ -56,22 +128,120 @@
     grid-template-columns: 1fr auto;
     gap: 12px;
   }
-  .sm-w-auto { width: auto; } /* desktop: boutons auto */
+  .btn-primary,
+  .btn-secondary { width: auto; }
+}
+@media (max-width: 480px) {
+  .room-title { gap: 6px; }
+  .actions { gap: 8px; }
 }
 
-/* ≥900px : largeur max alignée au design */
-@media (min-width: 900px) {
-  .page { max-width: 920px; }
-}
-
-/* Accessibilité : réduire les animations si demandé */
+/* ─────────────────────────────────────────────────────────
+   Accessibilité
+   ───────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .room-item { transition: none; }
 }
 
-/* Ajustement hover en dark mode */
-:root.dark .room-item:hover {
-  background: color-mix(in srgb, var(--mat-sys-primary) 10%, transparent);
+/* Actions à droite */
+.actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
 }
 
- .spacer { flex: 1 1 auto; }
+/* Boutons ronds, jolis en mobile, avec hover/focus */
+.action-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 2px 8px rgba(0,0,0,.12),
+    0 1px 3px rgba(0,0,0,.20);
+  transition:
+    transform .08s ease,
+    box-shadow .2s ease,
+    filter .2s ease,
+    background-color .2s ease;
+}
+
+.action-btn mat-icon {
+  font-size: 22px; /* un poil plus petit que 24 pour l’équilibre visuel */
+  line-height: 1;
+}
+
+/* Effets communs */
+.action-btn:hover:not([disabled]) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 6px 16px rgba(0,0,0,.16),
+    0 2px 4px rgba(0,0,0,.24);
+}
+
+.action-btn:active:not([disabled]) {
+  transform: translateY(0);
+  filter: brightness(.98);
+}
+
+/* Anneaux d’accessibilité (focus ring) */
+.action-enter:focus-visible {
+  outline: 3px solid var(--mat-sys-primary, #3f51b5);
+  outline-offset: 3px;
+}
+.action-delete:focus-visible {
+  outline: 3px solid var(--mat-sys-error, #d32f2f);
+  outline-offset: 3px;
+}
+
+/* Teintes subtiles (restent compatibles avec color="warn|primary") */
+.action-enter {
+  /* léger voile pour la profondeur */
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, #fff 0%, transparent) 0%,
+    color-mix(in srgb, #000 10%, transparent) 100%
+  );
+}
+
+.action-delete {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, #fff 0%, transparent) 0%,
+    color-mix(in srgb, #000 12%, transparent) 100%
+  );
+}
+
+/* État disabled : griser légèrement et retirer l’élévation */
+.action-btn[disabled] {
+  filter: grayscale(.2) opacity(.75);
+  box-shadow: none;
+  transform: none;
+}
+
+/* Ajustements compacts en très petit écran */
+@media (max-width: 400px) {
+  .actions { gap: 10px; }
+  .action-btn { width: 48px; height: 48px; }
+  .action-btn mat-icon { font-size: 21px; }
+}
+
+/* Dark mode : ombres un peu plus douces */
+:root.dark .action-btn {
+  box-shadow:
+    0 2px 8px rgba(0,0,0,.28),
+    0 1px 3px rgba(0,0,0,.35);
+}
+:root.dark .action-btn:hover:not([disabled]) {
+  box-shadow:
+    0 6px 16px rgba(0,0,0,.36),
+    0 2px 4px rgba(0,0,0,.44);
+}
+/* Mise en évidence visuelle de l'état actif */
+.chip-active {
+  font-weight: 600;
+  /* léger halo pour la lisibilité */
+  box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 35%, transparent) inset;
+}
