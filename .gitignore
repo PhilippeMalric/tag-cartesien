@@ -40,3 +40,6 @@ pnpm-debug.log*
 *.log
 *.tmp
 *.swp
+node_modules/
+dist/
+.angular/
