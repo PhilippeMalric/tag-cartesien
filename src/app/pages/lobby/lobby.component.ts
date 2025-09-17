@@ -1,5 +1,5 @@
 // src/app/pages/lobby/lobby.component.ts
-import { Component, inject, OnInit, EnvironmentInjector, runInInjectionContext } from '@angular/core';
+import { Component, inject, OnInit, EnvironmentInjector, runInInjectionContext, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AsyncPipe } from '@angular/common';
@@ -35,6 +35,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDividerModule } from '@angular/material/divider';
 import { DevCleanupService } from '../../services/dev-cleanup.service';
 import { environment } from '../../../environments/environment';
+import { MatSnackBar } from '@angular/material/snack-bar';
 
 type RoomVM = {
   id: string;
@@ -53,7 +54,7 @@ type RoomVM = {
     FormsModule, AsyncPipe,
     MatToolbarModule, MatCardModule, MatButtonModule, MatIconModule,
     MatListModule, MatProgressBarModule, MatFormFieldModule, MatInputModule,
-    MatTooltipModule, MatDividerModule,
+    MatTooltipModule, MatDividerModule,MatIconModule
   ],
   templateUrl: './lobby.component.html',
   styleUrls: ['./lobby.component.scss'],
@@ -64,11 +65,18 @@ export class LobbyComponent implements OnInit {
   private db = inject(Firestore);
   private rtdb = inject(Database);
   private env = inject(EnvironmentInjector);
-private devCleanup = inject(DevCleanupService);
+  private devCleanup = inject(DevCleanupService);
   readonly theme = inject(ThemeService);
+  private svc = inject(DevCleanupService);
+  private snack = inject(MatSnackBar);
 
-showDevCleanup = !environment.production;
+  TWO_HOURS = 2 * 60 * 60 * 1000;
+  cleaning = signal(false);
+  showDevCleanup = !environment.production;
 
+
+  
+deletingId = signal<string | null>(null);
   displayName = '';
   joinCode = '';
   loading = false;
@@ -163,24 +171,34 @@ showDevCleanup = !environment.production;
     this.writes = [`[${t}] ${msg}`, ...this.writes].slice(0, 50);
   }
 
-  async confirmPurgeAll() {
-    if (environment.production) {
-      alert('Refusé: cette action est désactivée en production.');
-      return;
-    }
-    // double confirmation
-    const ok1 = confirm('⚠️ DEV: Supprimer TOUTES les rooms + RTDB associée ?');
-    if (!ok1) return;
-    const ok2 = confirm('Dernière chance : es-tu sûr·e ?');
-    if (!ok2) return;
-
+  async cleanLobby() {
+      this.cleaning.set(true)
     try {
-      const res = await this.devCleanup.purgeAllRoomsDev();
-      this.log(`Purge terminée → rooms: ${res.rooms}, RTDB paths: ${res.rtdbPaths}`);
-      alert(`Purge OK.\nRooms: ${res.rooms}\nRTDB paths: ${res.rtdbPaths}`);
+      const [fs, db] = await Promise.allSettled([
+        this.svc.cleanOldRoomsFirestore(2 * 60 * 60 * 1000),
+        this.svc.cleanOldRoomsRtdb(2 * 60 * 60 * 1000),
+      ]);
+      console.log('FS:', fs);
+      console.log('RTDB:', db);
+    } finally {
+      this.cleaning.set(false)
+  }
+}
+
+  async onDeleteRoom(roomId: string) {
+    if (!confirm(`Supprimer la salle "${roomId}" ?`)) return;
+    this.deletingId.set(roomId);
+    try {
+      await this.svc.deleteRoomFirestore(roomId);   // supprime Firestore + RTDB
+      this.snack.open('Salle supprimée', 'OK', { duration: 2500 });
+
+      // Si ta liste vient de rooms$, elle se mettra à jour toute seule.
+      // Sinon, force un refresh si nécessaire :
+      this.refresh?.();
     } catch (e: any) {
-      console.error(e);
-      alert(`Erreur purge: ${e?.message || e}`);
+      this.snack.open(`Erreur: ${e?.message ?? e}`, 'Fermer', { duration: 4000 });
+    } finally {
+      this.deletingId.set(null);
     }
   }
 }

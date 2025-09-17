@@ -3,14 +3,17 @@
   <span class="spacer"></span>
 
   @if (showDevCleanup) {
-    <button
-      mat-stroked-button
-      color="warn"
-      (click)="confirmPurgeAll()"
-      matTooltip="Supprime TOUTES les rooms et leurs données associées (DEV)"
-    >
-      Purger toutes les rooms (DEV)
-    </button>
+    <div class="row" style="align-items:center; gap:.5rem;">
+      <button mat-stroked-button type="button"
+              (click)="cleanLobby()"
+              [disabled]="cleaning()">
+        <mat-icon>delete_sweep</mat-icon>
+        Nettoyer le lobby (+2 h)
+      </button>
+        @if (cleaning()) {
+              <mat-progress-bar mode="indeterminate" style="width:220px;"></mat-progress-bar>
+        }
+    </div>
   }
 </mat-toolbar>
 
@@ -96,21 +99,30 @@
         @if (rooms.length > 0) {
           <mat-nav-list>
             @for (r of rooms; track r.id) {
-              <button
-                mat-list-item
-                type="button"
-                class="room-item"
-                (click)="join(r)"
-                aria-label="Rejoindre la room {{ r.id }}"
-              >
+              <mat-list-item class="room-item" (click)="join(r)" aria-label="Rejoindre la room {{ r.id }}">
                 <div matListItemTitle>
                   Room #{{ r.id }} — {{ r.players ?? 0 }} joueur(s)
                 </div>
                 <div matListItemLine class="muted">
                   Score cible: {{ r.targetScore }} · Limite: {{ r.timeLimit }}s · État: {{ r.state }}
                 </div>
-                <mat-icon matListItemIcon fontSet="material-symbols-outlined">arrow_forward</mat-icon>
-              </button>
+
+                <!-- Actions à droite -->
+                <span matListItemMeta class="actions" style="display:flex; gap:6px; align-items:center;">
+                  <button mat-icon-button color="warn"
+                          (click)="$event.stopPropagation(); onDeleteRoom(r.id)"
+                          [disabled]="deletingId() === r.id"
+                          aria-label="Supprimer la room {{ r.id }}">
+                    <mat-icon>delete</mat-icon>
+                  </button>
+
+                  <button mat-icon-button
+                          (click)="$event.stopPropagation(); join(r)"
+                          aria-label="Rejoindre la room {{ r.id }}">
+                    <mat-icon>arrow_forward</mat-icon>
+                  </button>
+                </span>
+              </mat-list-item>
             }
           </mat-nav-list>
         } @else {

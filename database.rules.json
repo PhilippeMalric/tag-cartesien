@@ -25,7 +25,7 @@
       "$matchId": {
         "ownerUid": {
           ".read": "auth != null",
-          ".write": "auth != null && !data.exists() && newData.isString() && newData.val() === auth.uid"
+          ".write": "auth != null && !data.exists()"
         }
       }
     },
@@ -36,6 +36,14 @@
           ".read": "auth != null",
           ".write": "auth != null && root.child('roomsMeta').child($matchId).child('ownerUid').val() === auth.uid"
         }
+      }
+    },
+    "rooms": {
+      ".indexOn": ["updatedAt"],
+      "$roomId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "updatedAt": { ".validate": "newData.isNumber()" }
       }
     }
   }

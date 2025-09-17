@@ -15,9 +15,11 @@ import { browserSessionPersistence } from 'firebase/auth';
 // Firestore / RTDB
 import { provideFirestore, getFirestore } from '@angular/fire/firestore';
 import { provideDatabase, getDatabase } from '@angular/fire/database';
+import { MAT_ICON_DEFAULT_OPTIONS } from '@angular/material/icon';
 
 export const appConfig: ApplicationConfig = {
   providers: [
+    { provide: MAT_ICON_DEFAULT_OPTIONS, useValue: { fontSet: 'material-symbols-outlined' } },
     provideRouter(routes),
 
     // ✅ Animations Material (pas la version /async)
