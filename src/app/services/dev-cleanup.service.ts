@@ -4,7 +4,9 @@ import { Injectable, inject, EnvironmentInjector, runInInjectionContext } from '
 // Firestore
 import {
   Firestore, collection, query, where, limit, getDocs, writeBatch, doc,
-  deleteDoc
+  deleteDoc,
+  Timestamp,
+  orderBy
 } from '@angular/fire/firestore';
 
 // RTDB
@@ -43,8 +45,14 @@ export class DevCleanupService {
     while (true) {
       const roomsCol = collection(this.fs, 'rooms');
       console.log("snapFS",collection);
-      const q = query(roomsCol,  limit(50))
+      const cutoffTs = Timestamp.fromMillis(Date.now() - 2 * 60 * 60 * 1000);
 
+     const q = query(
+        roomsCol,
+        where('createdAt', '<=', cutoffTs),   // ou new Date(Date.now() - …)
+        orderBy('createdAt', 'desc'),
+        limit(50)
+      );
       const snap = await this.fsGetDocs(q);
 
       console.log("snapFS",snap);
