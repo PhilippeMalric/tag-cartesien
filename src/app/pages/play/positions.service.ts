@@ -4,10 +4,14 @@ import { BehaviorSubject, combineLatest } from 'rxjs';
 
 export type PosDTO = { x: number; y: number; t?: number; name?: string };
 
+export type Vec = { x: number; y: number };
+
 @Injectable({ providedIn: 'root' })
 export class PositionsService {
   private db = inject(Database);
 
+  
+  roomId!: string; // assigne-la depuis PlayComponent
   private _players$ = new BehaviorSubject<Record<string, PosDTO>>({});
   private _bots$    = new BehaviorSubject<Record<string, PosDTO>>({});
   private _positions$ = new BehaviorSubject<Record<string, PosDTO>>({});
@@ -70,4 +74,7 @@ export class PositionsService {
     this._bots$.next({});
     this._positions$.next({});
   }
+
+
+
 }

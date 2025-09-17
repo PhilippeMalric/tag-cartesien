@@ -1,8 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import { Auth as FirebaseAuth } from '@angular/fire/auth';
+import { authState, Auth as FirebaseAuth } from '@angular/fire/auth';
 import { Firestore, doc, docData, collection, collectionData, updateDoc } from '@angular/fire/firestore';
 import { addDoc, getDoc, increment, limit, orderBy, query } from 'firebase/firestore';
-import { Observable, map, shareReplay } from 'rxjs';
+import { Observable, firstValueFrom, map, shareReplay } from 'rxjs';
 import { MyPlayerDoc, RoomDoc, TagEvent } from './play.models';
 
 @Injectable({ providedIn: 'root' })
@@ -10,7 +10,6 @@ export class MatchService {
   // expo interne pour Play (update iFrame)
   readonly fs = inject(Firestore);
   private auth = inject(FirebaseAuth);
-
   get uid(): string | undefined { return this.auth.currentUser?.uid || undefined; }
 
   myPlayer$(matchId: string): Observable<MyPlayerDoc> {
@@ -84,4 +83,14 @@ export class MatchService {
     if (room.ownerUid !== uid) return;
     await updateDoc(roomRef, { state: 'ended' });
   }
+
+  async getMyPlayerIdFromAuth(): Promise<string> {
+  
+  // essaie d’abord le courant
+  const cur = this.auth.currentUser?.uid;
+  if (cur) return cur;
+  // sinon attends le prochain authState
+  const u = await firstValueFrom(authState(this.auth));
+  return u?.uid ?? '';
+}
 }

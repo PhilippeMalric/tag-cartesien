@@ -26,6 +26,7 @@ import { Pos } from './play.models';
 import { setupPlay } from './play.setup';
 import type { RecentTag } from './play.types';
 import { ScoreboardOverlayComponent } from './ui/scoreboard-overlay/scoreboard-overlay.component';
+import { MobileDpadComponent } from './ui/mobile-dpad.component';
 
 @Component({
   selector: 'app-play',
@@ -34,7 +35,7 @@ import { ScoreboardOverlayComponent } from './ui/scoreboard-overlay/scoreboard-o
     CommonModule,
     MatToolbarModule, MatButtonModule, MatIconModule,
     MatChipsModule, MatProgressBarModule, MatTooltipModule,
-    ScoreboardOverlayComponent
+    ScoreboardOverlayComponent,MobileDpadComponent
   ],
   styleUrls: ['./play.component.scss'],
   templateUrl: './play.component.html',
@@ -56,7 +57,6 @@ export class PlayComponent implements OnInit, OnDestroy {
   readonly match = inject(MatchService);
   readonly roomSvc = inject(RoomService);
   readonly bots = inject(BotService);
-
   // Canvas renderer
   readonly renderer = new PlayRenderer();
 
@@ -109,6 +109,31 @@ export class PlayComponent implements OnInit, OnDestroy {
   // Contrôles bots (utilisés par les boutons de la toolbar)
   spawnBots(n = 3) { if (this.isOwnerNow) this.bots.spawn(this.matchId, n); }
   stopBots() { if (this.isOwnerNow) this.bots.stopAll(this.matchId); }
+
+  // fonction appelée depuis le dpad
+  async onDpadMove(dir: 'up'|'down'|'left'|'right') {
+
+    setTimeout(() => {
+        this.onDpadRelease(dir)
+      }, 100)
+    // Exemple : si tu as already une méthode requestMove(playerId, dx, dy)
+    switch(dir){
+      case 'up':    this.keys.add('w'); ;  break;
+      case 'down':  this.keys.add('s'); break;
+      case 'left':  this.keys.add('a'); break;
+      case 'right': this.keys.add('d'); break;
+    }
+  }
+   // fonction appelée depuis le dpad
+  async onDpadRelease(dir: 'up'|'down'|'left'|'right') {
+    // Exemple : si tu as already une méthode requestMove(playerId, dx, dy)
+    switch(dir){
+      case 'up':    this.keys.delete('w');  break;
+      case 'down':  this.keys.delete('s'); break;
+      case 'left':  this.keys.delete('a'); break;
+      case 'right': this.keys.delete('d'); break;
+    }
+  }
 
   ngOnDestroy(): void {
     try { this.dispose?.(); } finally { this.dispose = null; }
