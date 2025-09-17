@@ -1,101 +1,103 @@
 <mat-toolbar color="primary">
-  <button mat-icon-button (click)="goLobby()" matTooltip="Retour au lobby">
+  <button mat-icon-button (click)="goLobby()" aria-label="Retour au lobby" matTooltip="Retour au lobby">
     <mat-icon fontSet="material-symbols-outlined">arrow_back</mat-icon>
   </button>
 
-  <span>Salle <strong class="ml4">{{ roomId }}</strong></span>
-
+  <span class="ml-2">Room {{ roomId }}</span>
   <span class="spacer"></span>
 
-  @let ownerFlag = (isOwner$ | async) ?? isOwner;
-  @if (ownerFlag) {
-    <span class="owner-badge">(Owner)</span>
+  @if (isOwner$ | async) {
+    <button
+      mat-stroked-button
+      color="accent"
+      class="mr-2"
+      (click)="chooseRandomHunter('all')"
+      matTooltip="Tirer un chasseur (parmi tous les joueurs)"
+    >
+      <mat-icon fontSet="material-symbols-outlined" class="mr-1">shuffle</mat-icon>
+      Tirer chasseur
+    </button>
+
+    <button
+      mat-button
+      class="mr-2"
+      (click)="chooseRandomHunter('ready')"
+      matTooltip="Tirer un chasseur (parmi les joueurs prêts)"
+    >
+      Prêts seulement
+    </button>
+  }
+
+  @if (canStart$ | async) {
+    <button mat-raised-button color="warn" (click)="start()" matTooltip="Démarrer la partie">
+      <mat-icon fontSet="material-symbols-outlined" class="mr-1">play_arrow</mat-icon>
+      Démarrer
+    </button>
   }
 </mat-toolbar>
 
-<div class="page">
-  <mat-card class="card">
+<div class="container">
+
+  <!-- Carte joueurs -->
+  <mat-card class="mt-3">
+    <mat-card-title>Joueurs</mat-card-title>
     <mat-card-content>
-      <div class="actions">
-        <button mat-raised-button color="primary" (click)="toggleReady()">
-          {{ myReady ? 'Pas prêt' : 'Je suis prêt' }}
-        </button>
+      <mat-list>
 
-        @let can = (canStart$ | async) ?? false;
+        @for (p of (playersVM$ | async); track p.uid) {
+          <mat-list-item>
+            <mat-icon matListItemIcon fontSet="material-symbols-outlined">person</mat-icon>
 
-        @if (ownerFlag) {
-          <button
-            mat-raised-button
-            color="accent"
-            (click)="start()"
-            [disabled]="!can || isStarting"
-            [matTooltip]="!can ? 'Tous prêts + ≥ 2 joueurs requis' : 'Lancer la partie'">
-            <mat-icon fontSet="material-symbols-outlined">play_arrow</mat-icon>
-            {{ isStarting ? 'Lancement…' : 'Lancer la partie' }}
-          </button>
+            <div matListItemTitle class="player-line">
+              <span class="name">{{ p.displayName }}</span>
+
+              @if (p.roleResolved === 'chasseur') {
+                <span class="role-badge hunter" title="Rôle">Chasseur</span>
+              } @else {
+                <span class="role-badge" title="Rôle">Chassé</span>
+              }
+
+              @if (p.ready) {
+                <span class="ready ml-2" title="Prêt">✅ prêt</span>
+              } @else {
+                <span class="not-ready ml-2" title="Pas prêt">⏳</span>
+              }
+            </div>
+          </mat-list-item>
+        } @empty {
+          <div class="p-3 text-muted">Aucun joueur pour le moment…</div>
         }
 
-        <span class="code">Code: <strong>{{ roomId }}</strong></span>
-      </div>
+      </mat-list>
     </mat-card-content>
   </mat-card>
 
-  <mat-card class="card">
-    <mat-card-header>
-      <mat-card-title>Joueurs</mat-card-title>
-    </mat-card-header>
-
+  <!-- Mes actions -->
+  <mat-card class="mt-3">
+    <mat-card-title>Mon statut</mat-card-title>
     <mat-card-content>
-      @let arr = (playersVM$ | async) ?? [];
-
-      @if (arr.length > 0) {
-        <mat-list>
-          @for (p of arr; track p.uid) {
-            <mat-list-item [class.hunter]="p.roleResolved === 'chasseur'">
-              <mat-icon matListItemIcon fontSet="material-symbols-outlined">
-                {{ p.roleResolved === 'chasseur' ? 'gps_fixed' : 'directions_run' }}
-              </mat-icon>
-
-              <div matListItemTitle>
-                <strong>{{ p.displayName || p.uid }}</strong>
-                @if (p.roleResolved === 'chasseur') {
-                  <span class="chip hunter-chip">Chasseur</span>
-                } @else if (p.roleResolved === 'chassé') {
-                  <span class="chip runner-chip">Chassé</span>
-                }
-              </div>
-
-              <div matListItemLine>
-                <span [style.color]="p.ready ? '#2e7d32' : '#d32f2f'">
-                  {{ p.ready ? 'prêt' : 'pas prêt' }}
-                </span>
-              </div>
-            </mat-list-item>
-          }
-        </mat-list>
-      } @else {
-        <div class="muted">En attente de joueurs…</div>
-      }
+      <button mat-raised-button color="primary" (click)="toggleReady()">
+        @if (myReady) { Je ne suis plus prêt } @else { Je suis prêt }
+      </button>
     </mat-card-content>
   </mat-card>
 
-  <!-- Journal (debug) -->
-  <mat-card class="card">
-    <mat-card-header>
-      <mat-card-title>Journal (écritures)</mat-card-title>
-    </mat-card-header>
-    <mat-card-content>
-      @if (writes.length > 0) {
-        <mat-list>
-          @for (w of writes; track $index) {
-            <mat-list-item>
+  <!-- Logs debug -->
+  @if (writes?.length) {
+    <mat-card class="mt-3">
+      <mat-card-title>Logs</mat-card-title>
+      <mat-card-content>
+        <mat-list role="list">
+          @for (w of writes; track w) {
+            <mat-list-item role="listitem">
+              <mat-icon matListItemIcon fontSet="material-symbols-outlined">event_note</mat-icon>
               <div matListItemTitle>{{ w }}</div>
             </mat-list-item>
           }
         </mat-list>
-      } @else {
-        <div class="muted">Aucune écriture pour le moment.</div>
-      }
-    </mat-card-content>
-  </mat-card>
+      </mat-card-content>
+    </mat-card>
+  }
+
 </div>
+

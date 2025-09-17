@@ -32,8 +32,8 @@ export const GAME_CONSTANTS = {
   RESPAWN_BOUNDS: { minX: -45, maxX: 45, minY: -45, maxY: 45, minDistFromHunter: 12 },
 
   // NOUVEAU: déplacements par pas
-  MOVE_COOLDOWN_MS_CHASSEUR: 1000, // 1s
-  MOVE_COOLDOWN_MS_CHASSE: 1500,   // 1.5s (tu peux mettre 2000 si tu veux)
+  MOVE_COOLDOWN_MS_CHASSEUR: 100, // 1s
+  MOVE_COOLDOWN_MS_CHASSE: 150,   // 1.5s (tu peux mettre 2000 si tu veux)
   STEP_UNITS_CHASSEUR: 6,
   STEP_UNITS_CHASSE: 5,
 } as const;

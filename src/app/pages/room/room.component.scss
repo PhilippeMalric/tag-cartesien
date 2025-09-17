@@ -32,3 +32,45 @@
   .actions { justify-content: stretch; }
   .actions button { width: 100%; }
 }
+
+.role-badge {
+  padding: .1rem .4rem;
+  border-radius: 9999px;
+  font-size: .75rem;
+  background: var(--mat-sys-surface-variant, #ececec);
+}
+.role-badge.hunter {
+  background: var(--mat-sys-primary, #3f51b5);
+  color: var(--mat-sys-on-primary, #fff);
+  font-weight: 600;
+}
+
+.spacer { flex: 1 1 auto; }
+  .ml-1 { margin-left: .25rem; }
+  .ml-2 { margin-left: .5rem; }
+  .mr-1 { margin-right: .25rem; }
+  .mr-2 { margin-right: .5rem; }
+  .mt-3 { margin-top: 1rem; }
+  .p-3 { padding: 1rem; }
+
+  .role-badge {
+    padding: .1rem .4rem;
+    border-radius: 9999px;
+    font-size: .75rem;
+    background: var(--mat-sys-surface-variant, #ececec);
+    margin-left: .5rem;
+  }
+  .role-badge.hunter {
+    background: var(--mat-sys-primary, #3f51b5);
+    color: var(--mat-sys-on-primary, #fff);
+    font-weight: 600;
+  }
+
+  .player-line {
+    display: flex;
+    align-items: center;
+    gap: .25rem;
+  }
+  .name {
+    font-weight: 600;
+  }

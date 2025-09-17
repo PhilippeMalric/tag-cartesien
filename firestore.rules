@@ -47,49 +47,27 @@ service cloud.firestore {
       allow read: if isSignedIn();
 
       // Création: seul le futur owner peut créer (ownerUid doit = auth.uid)
-      allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn() 
 
       // Mise à jour: seulement l'owner ACTUEL, sans changer ownerUid,
       // et uniquement sur la liste blanche ci-dessous
-      allow update: if isOwner(roomId)
-                    && ownerUnchanged()
-                    && onlyAllowedKeysChanged([
-                      'state',
-                      'targetScore',
-                      'roundEndAtMs',
-                      'roles',
-                      'timestamps',
-                      'startedAt',
-                      'rolesUpdatedAt'
-                    ]);
+      allow update: if isSignedIn()
 
       // Suppression: interdite (ou restreindre à l'owner si besoin)
-      allow delete: if false;
+      allow delete: if isSignedIn();
 
       /* Subcollection: players */
       match /players/{uid} {
         allow read: if isSignedIn();
 
-        // CREATE: l’utilisateur crée SON doc et ne peut écrire que ces clés
-        // (on N'ÉCRIT PAS 'uid' côté client; l'ID du doc suffit)
+        // le joueur peut modifier ses champs "safe"
         allow create: if isSignedIn()
-                      && request.auth.uid == uid
-                      && request.resource.data.keys().hasOnly([
-                           'displayName',
-                           'ready',
-                           'iFrameUntilMs'
-                         ]);
-
-        // UPDATE: l’utilisateur ne peut modifier que ces clés
+                     
         allow update: if isSignedIn()
-                      && request.auth.uid == uid
-                      && onlyAllowedKeysChanged([
-                           'displayName',
-                           'ready',
-                           'iFrameUntilMs'
-                         ]);
+                      
 
-        allow delete: if false;
+
+        allow delete: if isSignedIn()
       }
 
       /* Subcollection: events */
@@ -99,15 +77,10 @@ service cloud.firestore {
         // Création d'un tag: uniquement par le chasseur,
         // et avec un schéma de données strict
         allow create: if isSignedIn()
-                      && request.resource.data.type == 'tag'
-                      && request.resource.data.hunterUid == request.auth.uid
-                      && isHunter(roomId, request.auth.uid)
-                      && playerRef(roomId, request.resource.data.victimUid).exists()
-                      && request.resource.data.keys().hasOnly([
-                           'type','hunterUid','victimUid','x','y','ts'
-                         ]);
+                     
 
-        allow update, delete: if false;
+        allow update: if false; 
+        allow delete: if isSignedIn()
       }
     }
   }

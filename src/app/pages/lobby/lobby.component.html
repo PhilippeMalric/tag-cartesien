@@ -1,16 +1,19 @@
 <mat-toolbar color="primary">
-  <button mat-icon-button matTooltip="Basculer clair/sombre" (click)="theme.toggle()" aria-label="Basculer le thème">
-    <mat-icon fontSet="material-symbols-outlined">dark_mode</mat-icon>
-  </button>
-  <span class="ml8">Lobby</span>
-
+  <span>Lobby</span>
   <span class="spacer"></span>
 
-  <button mat-stroked-button color="accent" (click)="refresh()" [disabled]="loading" aria-label="Actualiser">
-    <mat-icon fontSet="material-symbols-outlined">refresh</mat-icon>
-    Actualiser
-  </button>
+  @if (showDevCleanup) {
+    <button
+      mat-stroked-button
+      color="warn"
+      (click)="confirmPurgeAll()"
+      matTooltip="Supprime TOUTES les rooms et leurs données associées (DEV)"
+    >
+      Purger toutes les rooms (DEV)
+    </button>
+  }
 </mat-toolbar>
+
 
 <div class="page">
   <!-- Créer une salle -->

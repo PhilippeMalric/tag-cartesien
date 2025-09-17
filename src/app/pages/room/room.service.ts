@@ -6,7 +6,7 @@ import {
   serverTimestamp
 } from '@angular/fire/firestore';
 import { Observable, defer } from 'rxjs';
-import { Player } from './player.model';
+import { Player } from '../room/player.model'; // Assure-toi que Player { uid: string; ... }
 
 export type RoomState = 'idle' | 'in-progress' | 'running' | 'ended';
 export type Role = 'chasseur' | 'chassé';
@@ -21,8 +21,6 @@ export interface RoomDoc {
   startedAt?: any;
   rolesUpdatedAt?: any;
 }
-
-
 
 @Injectable({ providedIn: 'root' })
 export class RoomService {
@@ -40,7 +38,7 @@ export class RoomService {
     );
   }
 
-  /** Flux temps réel des joueurs (idField -> uid injecté côté client) */
+  /** Flux temps réel des joueurs (idField → injecte 'uid' côté client) */
   players$ = (roomId: string): Observable<Player[]> => {
     return defer(() =>
       runInInjectionContext(this.env, () => {
@@ -57,7 +55,7 @@ export class RoomService {
     return doc(this.fs, `rooms/${roomId}/players/${uid}`);
   }
 
-  /** Crée/merge mon doc joueur — n'écrit PAS `uid` (les règles l’interdisent) */
+  /** Crée/merge mon doc joueur — n'écrit PAS `uid` (interdit par règles) */
   async ensureSelfPlayerDoc(roomId: string, uid: string, displayName: string) {
     return runInInjectionContext(this.env, async () => {
       await setDoc(this.playerRef(roomId, uid), { displayName }, { merge: true });
@@ -71,58 +69,45 @@ export class RoomService {
     });
   }
 
-  /** Choisit un chasseur s'il n'en existe pas (préfère l'owner si présent) */
-  private async pickHunterUid(roomId: string, preferOwner = true): Promise<string | null> {
-    return runInInjectionContext(this.env, async () => {
-      const roomSnap = await getDoc(this.roomRef(roomId));
-      const room = roomSnap.data() as RoomDoc | undefined;
-      if (!room) return null;
-
-      const playersSnap = await getDocs(collection(this.fs, `rooms/${roomId}/players`));
-      const players = playersSnap.docs.map(d => ({  ...(d.data() as Player) }));
-      if (players.length === 0) return null;
-
-      const existing = players.find(p => p.role === 'chasseur');
-      if (existing?.uid) return existing.uid;
-
-      if (room.roles) {
-        const found = Object.entries(room.roles).find(([, r]) => r === 'chasseur');
-        if (found) return found[0];
-      }
-
-      if (preferOwner && room.ownerUid && players.some(p => p.uid === room.ownerUid)) {
-        return room.ownerUid;
-      }
-
-      const ready = players.filter(p => !!p.ready);
-      const pool = ready.length ? ready : players;
-      return pool[Math.floor(Math.random() * pool.length)].uid!;
-    });
+  /** Helper interne: détecte s'il existe déjà un chasseur */
+  private hasHunter(room: Partial<RoomDoc> | null | undefined, players: Player[]): boolean {
+    if (!players?.length) return false;
+    if (players.some(p => p.role === 'chasseur')) return true;
+    const roles = room?.roles ?? {};
+    return Object.values(roles).some(r => r === 'chasseur');
   }
 
-  /** Assigne >=1 chasseur et marque les autres en chassé */
-  async ensureRoles(roomId: string): Promise<void> {
+  /** Helper interne: owner > ready > premier (sync) */
+  private pickHunterUidSync(room: RoomDoc, players: Player[]): string {
+    if (room.ownerUid && players.some(p => p.uid === room.ownerUid)) return room.ownerUid;
+    const ready = players.filter(p => !!p.ready);
+    if (ready.length) return ready[0].uid;
+    return players[0].uid;
+  }
+
+  /** Garanti: >=1 chasseur. (Batch non-transactionnel) */
+  async ensureAtLeastOneHunter(roomId: string): Promise<void> {
     return runInInjectionContext(this.env, async () => {
-      const [roomSnap, playersSnap] = await Promise.all([
-        getDoc(this.roomRef(roomId)),
-        getDocs(collection(this.fs, `rooms/${roomId}/players`)),
-      ]);
+      const roomSnap = await getDoc(this.roomRef(roomId));
       if (!roomSnap.exists()) return;
+      const room = roomSnap.data() as RoomDoc;
 
-      const players = playersSnap.docs.map(d => ({  ...(d.data() as Player) }));
+      const playersSnap = await getDocs(collection(this.fs, `rooms/${roomId}/players`));
+      const players = playersSnap.docs
+        .map(d => ({  ...(d.data() as Player) }))
+        .filter(p => !!p.uid);
+
       if (!players.length) return;
+      if (this.hasHunter(room, players)) return;
 
-      const already = players.find(p => p.role === 'chasseur');
-      const hunterUid = already?.uid ?? await this.pickHunterUid(roomId, true);
-      if (!hunterUid) return;
-
+      const hunterUid = this.pickHunterUidSync(room, players);
       const roles: Record<string, Role> = {};
-      for (const p of players) roles[p.uid!] = (p.uid === hunterUid ? 'chasseur' : 'chassé');
+      for (const p of players) roles[p.uid] = (p.uid === hunterUid ? 'chasseur' : 'chassé');
 
       const batch = writeBatch(this.fs);
       batch.update(this.roomRef(roomId), { roles, rolesUpdatedAt: serverTimestamp() });
       for (const p of players) {
-        batch.update(this.playerRef(roomId, p.uid!), { role: roles[p.uid!] });
+        batch.update(this.playerRef(roomId, p.uid), { role: roles[p.uid] });
       }
       await batch.commit();
     });
@@ -131,7 +116,7 @@ export class RoomService {
   /** Démarre: garantit un chasseur puis passe la room à 'running' avec timer/score */
   async start(roomId: string, opts?: { targetScore?: number; roundMs?: number }) {
     return runInInjectionContext(this.env, async () => {
-      await this.ensureRoles(roomId);
+      await this.ensureAtLeastOneHunter(roomId);
 
       const roundMs = opts?.roundMs ?? 60_000;
       const roundEndAtMs = Date.now() + roundMs;
@@ -144,4 +129,14 @@ export class RoomService {
       });
     });
   }
+
+  /**
+   * Applique des rôles fournis (construits côté composant avec playersVM$).
+   * Owner-only (tes règles). N'effectue AUCUNE lecture Firestore.
+   */
+ async applyRoles(roomId: string, roles: Record<string, 'chasseur' | 'chassé'>): Promise<void> {
+  return runInInjectionContext(this.env, async () => {
+    await updateDoc(this.roomRef(roomId), { roles, rolesUpdatedAt: serverTimestamp() });
+  });
+}
 }

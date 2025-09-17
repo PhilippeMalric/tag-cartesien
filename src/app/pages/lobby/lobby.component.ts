@@ -33,6 +33,8 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDividerModule } from '@angular/material/divider';
+import { DevCleanupService } from '../../services/dev-cleanup.service';
+import { environment } from '../../../environments/environment';
 
 type RoomVM = {
   id: string;
@@ -62,13 +64,16 @@ export class LobbyComponent implements OnInit {
   private db = inject(Firestore);
   private rtdb = inject(Database);
   private env = inject(EnvironmentInjector);
-
+private devCleanup = inject(DevCleanupService);
   readonly theme = inject(ThemeService);
+
+showDevCleanup = !environment.production;
 
   displayName = '';
   joinCode = '';
   loading = false;
 
+  writes: string[] = [];
   rooms$!: Observable<RoomVM[]>;
 
   ngOnInit(): void {
@@ -151,5 +156,31 @@ export class LobbyComponent implements OnInit {
 
   async join(r: RoomVM) {
     await this.router.navigate(['/room', r.id]);
+  }
+
+  private log(msg: string) {
+    const t = new Date().toLocaleTimeString();
+    this.writes = [`[${t}] ${msg}`, ...this.writes].slice(0, 50);
+  }
+
+  async confirmPurgeAll() {
+    if (environment.production) {
+      alert('Refusé: cette action est désactivée en production.');
+      return;
+    }
+    // double confirmation
+    const ok1 = confirm('⚠️ DEV: Supprimer TOUTES les rooms + RTDB associée ?');
+    if (!ok1) return;
+    const ok2 = confirm('Dernière chance : es-tu sûr·e ?');
+    if (!ok2) return;
+
+    try {
+      const res = await this.devCleanup.purgeAllRoomsDev();
+      this.log(`Purge terminée → rooms: ${res.rooms}, RTDB paths: ${res.rtdbPaths}`);
+      alert(`Purge OK.\nRooms: ${res.rooms}\nRTDB paths: ${res.rtdbPaths}`);
+    } catch (e: any) {
+      console.error(e);
+      alert(`Erreur purge: ${e?.message || e}`);
+    }
   }
 }

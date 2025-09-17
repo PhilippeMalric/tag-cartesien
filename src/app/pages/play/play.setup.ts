@@ -1,9 +1,10 @@
-import { runInInjectionContext } from '@angular/core';
+import { inject, runInInjectionContext } from '@angular/core';
 import { doc, setDoc, updateDoc } from '@angular/fire/firestore';
 import { pickRespawn } from './respawn.util';
 import { GAME_CONSTANTS, TagEvent } from './play.models';
 import type { Player } from '../room/player.model';
 import type { PlayCtx } from './play.types';
+import { ToastService } from '../../services/toast.service';
 
 /**
  * Branche toute la logique “runtime” (auth, listeners, subscriptions, loop).
@@ -28,6 +29,9 @@ export function setupPlay(ctx: PlayCtx): () => void {
     : GAME_CONSTANTS.STEP_UNITS_CHASSE;
   const moveReady = () => (performance.now() - ctx.lastMoveAt) >= moveCooldownMs();
 
+
+
+  
   // --------- BOOTSTRAP APRÈS AUTH ---------
   const bootstrap = () => {
     // Clavier
@@ -195,6 +199,12 @@ export function setupPlay(ctx: PlayCtx): () => void {
         const victim = findVictimWithinRadius(ctx);
         if (victim) {
           const projected = ctx.myScore + 1;
+          if (remainingInvulnMs(victim as any) > 0) {
+              // 👉 UI friendly : petit toast plutôt que throw
+              const toast = inject(ToastService);
+              toast.toast(`Invulnérable encore ${(remainingInvulnMs(victim as any)/1000).toFixed(1)} s`);
+              return;
+}
           ctx.match.emitTag(ctx.matchId, ctx.me.x, ctx.me.y, victim.uid)
             .then(() => {
               ctx.lastTagMs = performance.now();
@@ -249,6 +259,19 @@ export function setupPlay(ctx: PlayCtx): () => void {
     // Nettoyage bots si owner (évite bots fantômes)
     if (isOwnerNow()) ctx.bots.stopAll(ctx.matchId);
   };
+
+
+  
+}
+
+// helpers/time.ts
+export function remainingInvulnMs(victim: { lastSpawnAt?: number; lastTaggedAt?: number }, C = GAME_CONSTANTS) {
+  const now = Date.now();
+  const sinceSpawn = victim.lastSpawnAt ? now - victim.lastSpawnAt : Infinity;
+  const sinceTag   = victim.lastTaggedAt ? now - victim.lastTaggedAt : Infinity;
+  const rem1 = Math.max(0, C.INVULN_MS - sinceSpawn);
+  const rem2 = Math.max(0, C.TAG_COOLDOWN_MS   - sinceTag);
+  return Math.max(rem1, rem2);
 }
 
 // --- Utils ---
