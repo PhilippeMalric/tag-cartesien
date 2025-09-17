@@ -73,3 +73,29 @@
 :root.dark .room-item:hover {
   background: color-mix(in srgb, var(--mat-sys-primary) 10%, transparent);
 }
+
+.drag {
+  position: fixed;         /* flottant */
+  z-index: 1000;           /* au-dessus du canvas */
+  touch-action: none;      /* meilleur drag sur mobile */
+  user-select: none;
+}
+
+.drag--dpad {
+  bottom: 16px;            /* position de départ */
+  left: 16px;
+}
+
+.drag--score {
+  top: 80px;               /* sous la toolbar */
+  right: 16px;
+}
+
+/* Option : une petite poignée visible au survol (pas obligatoire)
+.cdk-drag {
+  cursor: grab;
+}
+.cdk-drag.cdk-drag-dragging {
+  cursor: grabbing;
+}
+*/

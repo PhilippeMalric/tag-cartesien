@@ -28,6 +28,8 @@ import type { RecentTag } from './play.types';
 import { ScoreboardOverlayComponent } from './ui/scoreboard-overlay/scoreboard-overlay.component';
 import { MobileDpadComponent } from './ui/mobile-dpad.component';
 
+import { DragDropModule } from '@angular/cdk/drag-drop';
+
 @Component({
   selector: 'app-play',
   standalone: true,
@@ -35,7 +37,7 @@ import { MobileDpadComponent } from './ui/mobile-dpad.component';
     CommonModule,
     MatToolbarModule, MatButtonModule, MatIconModule,
     MatChipsModule, MatProgressBarModule, MatTooltipModule,
-    ScoreboardOverlayComponent,MobileDpadComponent
+    ScoreboardOverlayComponent,MobileDpadComponent,DragDropModule
   ],
   styleUrls: ['./play.component.scss'],
   templateUrl: './play.component.html',

@@ -25,17 +25,28 @@
 <mat-progress-bar mode="determinate" [value]="moveProgress"></mat-progress-bar>
 
 <!-- Debug overlay -->
-<div style="position:absolute;right:8px;top:96px;padding:6px 8px;background:#0008;color:#fff;
-            border-radius:6px;font:12px/1.2 monospace;z-index:5">
-  uid: {{debug.uid}}<br>
-  match: {{debug.match}}<br>
-  pos.uids: {{debug.posUids.join(',') || '∅'}}
-</div>
+
 
 <!-- Canvas plein écran sous la toolbar (64px) + progress (4px) -->
 <div style="height:calc(100vh - 64px - 4px);display:flex;flex-direction:column;">
   <canvas #canvas style="flex:1;width:100%;height:100%;display:block;background:var(--canvas-bg);"></canvas>
 </div>
 
-<app-mobile-dpad [releaseFn]="onDpadRelease.bind(this)" [moveFn]="onDpadMove.bind(this)"></app-mobile-dpad>
-<app-scoreboard-overlay [collapsed]="false"></app-scoreboard-overlay>
+<div class="drag drag--dpad" cdkDrag cdkDragBoundary="body">
+  <app-mobile-dpad
+    [releaseFn]="onDpadRelease.bind(this)"
+    [moveFn]="onDpadMove.bind(this)">
+  </app-mobile-dpad>
+</div>
+
+<div class="drag drag--score" cdkDrag cdkDragBoundary="body">
+  <app-scoreboard-overlay [collapsed]="false"></app-scoreboard-overlay>
+</div>
+
+<div class="drag drag--score" cdkDrag cdkDragBoundary="body"
+      style="position:absolute;right:8px;top:96px;padding:6px 8px;background:#0008;color:#fff;
+            border-radius:6px;font:12px/1.2 monospace;z-index:5">
+  uid: {{debug.uid}}<br>
+  match: {{debug.match}}<br>
+  pos.uids: {{debug.posUids.join(',') || '∅'}}
+</div>
