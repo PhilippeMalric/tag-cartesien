@@ -132,13 +132,13 @@
                     <span>Limite&nbsp;: {{ r.timeLimit }}s</span>
                   </mat-chip>
 
-                 <mat-chip
-                    [color]="(r.state === 'running' || r.state === 'in-progress') ? 'primary' : undefined"
-                    [ngClass]="{'chip-active': (r.state === 'running' || r.state === 'in-progress')}"
-                  >
-                    <mat-icon fontSet="material-symbols-outlined">flag</mat-icon>
-                    <span>{{ r.state }}</span>
-                  </mat-chip>
+                <mat-chip
+                  [color]="(r.state === 'running' || r.state === 'in-progress') ? 'primary' : undefined"
+                  [class.chip-active]="(r.state === 'running' || r.state === 'in-progress')"
+                >
+                  <mat-icon fontSet="material-symbols-outlined">flag</mat-icon>
+                  <span>{{ r.state }}</span>
+                </mat-chip>
 
                   <mat-chip appearance="outlined">
                     <mat-icon fontSet="material-symbols-outlined">schedule</mat-icon>
@@ -178,7 +178,6 @@
 
             <mat-divider></mat-divider>
 
-              <mat-divider></mat-divider>
             }
           </mat-nav-list>
         } @else {

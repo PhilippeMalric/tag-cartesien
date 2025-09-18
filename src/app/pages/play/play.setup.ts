@@ -200,11 +200,12 @@ export function setupPlay(ctx: PlayCtx): () => void {
         if (victim) {
           const projected = ctx.myScore + 1;
           if (remainingInvulnMs(victim as any) > 0) {
-              // 👉 UI friendly : petit toast plutôt que throw
+            runInInjectionContext(ctx.env, () => {
               const toast = inject(ToastService);
               toast.toast(`Invulnérable encore ${(remainingInvulnMs(victim as any)/1000).toFixed(1)} s`);
-              return;
-}
+            });
+            return;
+          }
           ctx.match.emitTag(ctx.matchId, ctx.me.x, ctx.me.y, victim.uid)
             .then(() => {
               ctx.lastTagMs = performance.now();

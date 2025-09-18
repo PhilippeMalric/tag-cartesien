@@ -107,7 +107,7 @@ export class RoomService {
       const batch = writeBatch(this.fs);
       batch.update(this.roomRef(roomId), { roles, rolesUpdatedAt: serverTimestamp() });
       for (const p of players) {
-        batch.update(this.playerRef(roomId, p.uid), { role: roles[p.uid] });
+        batch.set(this.playerRef(roomId, p.uid), { role: roles[p.uid] }, { merge: true });
       }
       await batch.commit();
     });

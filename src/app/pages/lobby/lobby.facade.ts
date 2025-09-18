@@ -138,7 +138,7 @@ init(): void {
     this.cleaning.set(true);
     try {
       await Promise.allSettled([
-        this.devCleanup.cleanOldRoomsFirestore(this.TWO_HOURS),
+        this.devCleanup.cleanOldRoomsFirestore(),
         this.devCleanup.cleanOldRoomsRtdb(this.TWO_HOURS),
       ]);
     } finally {

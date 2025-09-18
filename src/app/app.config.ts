@@ -5,7 +5,7 @@ import { routes } from './app.routes';
 import { provideAnimations } from '@angular/platform-browser/animations';
 
 // Firebase App
-import { provideFirebaseApp, initializeApp, FirebaseApp } from '@angular/fire/app';
+import { provideFirebaseApp, initializeApp, FirebaseApp, getApp } from '@angular/fire/app';
 import { environment } from '../environments/environment';
 
 // Firebase Auth
@@ -26,18 +26,13 @@ export const appConfig: ApplicationConfig = {
     provideAnimations(),
 
     // ✅ Firebase App
-    provideFirebaseApp(() => initializeApp(environment.firebase)),
+    provideFirebaseApp(() => { try { return getApp(); } catch { return initializeApp(environment.firebase); } }),
 
     // ✅ Auth avec persistance "session" et app correctement injectée
     provideAuth(() => {
       const app = inject(FirebaseApp);
-      try {
-        // Initialise explicitement l'Auth avec persistance par session
-        return initializeAuth(app, { persistence: browserSessionPersistence });
-      } catch {
-        // Si déjà initialisé, on récupère simplement l'instance
-        return getAuth(app);
-      }
+      try { return getAuth(app); }
+      catch { return initializeAuth(app, { persistence: browserSessionPersistence }); }
     }),
 
     // ✅ Firestore / Realtime Database

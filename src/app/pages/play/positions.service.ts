@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Database, ref, set, onValue, off, onDisconnect } from '@angular/fire/database';
-import { BehaviorSubject, combineLatest } from 'rxjs';
+import { BehaviorSubject, combineLatest, Subscription } from 'rxjs';
 
 export type PosDTO = { x: number; y: number; t?: number; name?: string };
 
@@ -10,7 +10,7 @@ export type Vec = { x: number; y: number };
 export class PositionsService {
   private db = inject(Database);
 
-  
+  private mergeSub?: Subscription;
   roomId!: string; // assigne-la depuis PlayComponent
   private _players$ = new BehaviorSubject<Record<string, PosDTO>>({});
   private _bots$    = new BehaviorSubject<Record<string, PosDTO>>({});
@@ -56,24 +56,25 @@ export class PositionsService {
     onValue(this.listenRefBots, this.cbBots);
 
     // Fusion
-    combineLatest([this._players$, this._bots$]).subscribe(([p, b]) => {
-      // Préfixe les bots par "bot-" pour éviter collisions
-      const merged: Record<string, PosDTO> = { ...p };
-      for (const [id, pos] of Object.entries(b || {})) {
-        merged[`bot-${id}`] = pos;
-      }
-      this._positions$.next(merged);
-    });
+    this.mergeSub = combineLatest([this._players$, this._bots$]).subscribe(([p, b]) => {
+       const merged: Record<string, PosDTO> = { ...p };
+       for (const [id, pos] of Object.entries(b || {})) {
+         merged[`bot-${id}`] = pos;
+       }
+       this._positions$.next(merged);
+     });
   }
 
   stop() {
+    this.mergeSub?.unsubscribe();
+    this.mergeSub = undefined;
     if (this.listenRefPlayers && this.cbPlayers) off(this.listenRefPlayers, this.cbPlayers);
     if (this.listenRefBots && this.cbBots) off(this.listenRefBots, this.cbBots);
-    this.listenRefPlayers = this.cbPlayers = this.listenRefBots = this.cbBots = null;
-    this._players$.next({});
-    this._bots$.next({});
-    this._positions$.next({});
-  }
+      this.listenRefPlayers = this.cbPlayers = this.listenRefBots = this.cbBots = null;
+      this._players$.next({});
+      this._bots$.next({});
+      this._positions$.next({});
+    }
 
 
 

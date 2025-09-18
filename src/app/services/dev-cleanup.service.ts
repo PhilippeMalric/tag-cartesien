@@ -37,9 +37,8 @@ export class DevCleanupService {
    * Hypothèses: rooms/{roomId} possède { ownerUid, updatedAt }.
    * On supprime aussi la sous-collec players (jusqu’à 250 entrées par passe).
    */
-  async cleanOldRoomsFirestore(maxAgeMs = 2  ): Promise<{ deleted: number }> {
-    const cutoff = Date.now() - maxAgeMs;
-    const uid = this.auth.currentUser?.uid; // si tu veux filtrer par owner
+  async cleanOldRoomsFirestore(): Promise<{ deleted: number }> {
+    
     let totalDeleted = 0;
 
     while (true) {

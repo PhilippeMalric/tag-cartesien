@@ -7,7 +7,8 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "serve:ssr:tag-cartesien": "node dist/tag-cartesien/server/server.mjs"
+    "serve:ssr:tag-cartesien": "node dist/tag-cartesien/server/server.mjs",
+    "deploy-h":"firebase deploy --only hosting"
   },
   "prettier": {
     "printWidth": 100,
