@@ -1,0 +1,16 @@
+<div class="map-wrap">
+  <canvas #cv
+    (pointerdown)="onPointerDown($event)"
+    (pointermove)="onPointerMove($event)"
+    (pointerup)="endDrag($event)"
+    (pointercancel)="endDrag($event)"
+    (pointerleave)="endDrag($event)"
+    aria-label="Sélection du point de départ"
+  ></canvas>
+
+  <div class="coord-badge">x: {{ xy().x }} · y: {{ xy().y }}</div>
+
+  <!-- étiquettes axes -->
+  <div class="axes-label axes-x">x</div>
+  <div class="axes-label axes-y">y</div>
+</div>

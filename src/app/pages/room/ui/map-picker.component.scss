@@ -1,0 +1,33 @@
+.map-wrap{
+  position: relative;
+  width: 100%;
+  height: clamp(220px, 32vw, 360px);
+  user-select: none;
+  touch-action: none;
+}
+canvas{
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
+  background: var(--canvas-bg, #111);
+  border-radius: 12px;
+  /* iOS/Android: pointer events fluides */
+  touch-action: none;
+}
+.axes-label{
+  position:absolute;
+  font: 12px/1 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: #9aa0a6; opacity:.9; pointer-events:none;
+}
+/* x mieux placé : haut-centre */
+.axes-x{ left: 50%; top: 6px; transform: translateX(-50%); }
+/* y inchangé : bas-centre */
+.axes-y{ left: 50%; bottom: 6px; transform: translateX(-50%); }
+
+.coord-badge{
+  position:absolute; left: 8px; top: 8px;
+  padding: 4px 8px; border-radius: 8px;
+  background: rgba(0,0,0,.45); color: #fff; font: 12px/1.2 monospace;
+  pointer-events:none;
+}
+:root.dark canvas{ background:#0b0b0c; }

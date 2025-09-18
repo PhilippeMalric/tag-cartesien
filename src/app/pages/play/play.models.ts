@@ -1,5 +1,7 @@
 export type Pos = { x: number; y: number };
 
+
+
 export type TagEvent = {
   id?: string;
   type: 'tag';
@@ -14,6 +16,7 @@ export type MyPlayerDoc = {
   role?: 'chasseur' | 'chassé' | null;
   score?: number;
   iFrameUntilMs?: number;
+  spawn?: { x: number; y: number }; // ← ajout
 };
 
 export type RoomDoc = {

@@ -29,6 +29,7 @@ import { ScoreboardOverlayComponent } from './ui/scoreboard-overlay/scoreboard-o
 import { MobileDpadComponent } from './ui/mobile-dpad.component';
 
 import { DragDropModule } from '@angular/cdk/drag-drop';
+import { SpawnCoordService } from '../../services/spawn-coord.service';
 
 @Component({
   selector: 'app-play',
@@ -37,7 +38,7 @@ import { DragDropModule } from '@angular/cdk/drag-drop';
     CommonModule,
     MatToolbarModule, MatButtonModule, MatIconModule,
     MatChipsModule, MatProgressBarModule, MatTooltipModule,
-    ScoreboardOverlayComponent,MobileDpadComponent,DragDropModule
+    ScoreboardOverlayComponent, MobileDpadComponent, DragDropModule
   ],
   styleUrls: ['./play.component.scss'],
   templateUrl: './play.component.html',
@@ -61,6 +62,9 @@ export class PlayComponent implements OnInit, OnDestroy {
   readonly bots = inject(BotService);
   // Canvas renderer
   readonly renderer = new PlayRenderer();
+
+  // Spawn partagé (utilisé pour lecture éventuelle du point choisi dans la room)
+  readonly spawnSvc = inject(SpawnCoordService);
 
   // Exposés au template
   matchId = '';
@@ -104,6 +108,11 @@ export class PlayComponent implements OnInit, OnDestroy {
     const n = parseInt(new URLSearchParams(location.search).get('bots') || '', 10);
     this.desiredBots = Number.isFinite(n) && n > 0 ? Math.min(n, 12) : 0;
 
+    // (Optionnel) on initialise "me" avec le point de spawn choisi dans la room.
+    // Le setupPlay peut décider d'utiliser ce point si tu l’as câblé côté setup.
+    const s = this.spawnSvc.xy();
+    this.me = { x: s.x, y: s.y };
+
     // Démarre la logique runtime (auth+bootstrap+loop+subs)
     this.dispose = setupPlay(this);
   }
@@ -114,23 +123,18 @@ export class PlayComponent implements OnInit, OnDestroy {
 
   // fonction appelée depuis le dpad
   async onDpadMove(dir: 'up'|'down'|'left'|'right') {
-
-    setTimeout(() => {
-        this.onDpadRelease(dir)
-      }, 100)
-    // Exemple : si tu as already une méthode requestMove(playerId, dx, dy)
-    switch(dir){
-      case 'up':    this.keys.add('w'); ;  break;
+    setTimeout(() => { this.onDpadRelease(dir); }, 100);
+    switch (dir) {
+      case 'up':    this.keys.add('w'); break;
       case 'down':  this.keys.add('s'); break;
       case 'left':  this.keys.add('a'); break;
       case 'right': this.keys.add('d'); break;
     }
   }
-   // fonction appelée depuis le dpad
+  // fonction appelée depuis le dpad
   async onDpadRelease(dir: 'up'|'down'|'left'|'right') {
-    // Exemple : si tu as already une méthode requestMove(playerId, dx, dy)
-    switch(dir){
-      case 'up':    this.keys.delete('w');  break;
+    switch (dir) {
+      case 'up':    this.keys.delete('w'); break;
       case 'down':  this.keys.delete('s'); break;
       case 'left':  this.keys.delete('a'); break;
       case 'right': this.keys.delete('d'); break;

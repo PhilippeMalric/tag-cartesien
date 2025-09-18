@@ -130,13 +130,31 @@ export class RoomService {
     });
   }
 
+ /** Sauvegarde mon point de départ (dans mon doc player) */
+  async setMySpawn(roomId: string, uid: string, spawn: { x: number; y: number }) {
+    return runInInjectionContext(this.env, async () => {
+      await updateDoc(this.playerRef(roomId, uid), {
+        spawn: {
+          x: Math.max(-50, Math.min(50, Math.round(spawn.x))),
+          y: Math.max(-50, Math.min(50, Math.round(spawn.y))),
+        },
+      });
+    });
+  }
+  
+  async setSpawn(roomId: string, uid: string, spawn: { x: number; y: number }) {
+    return runInInjectionContext(this.env, async () => {
+      await updateDoc(this.playerRef(roomId, uid), { spawn: { x: spawn.x, y: spawn.y } });
+    });
+  }
+
   /**
    * Applique des rôles fournis (construits côté composant avec playersVM$).
    * Owner-only (tes règles). N'effectue AUCUNE lecture Firestore.
    */
  async applyRoles(roomId: string, roles: Record<string, 'chasseur' | 'chassé'>): Promise<void> {
-  return runInInjectionContext(this.env, async () => {
-    await updateDoc(this.roomRef(roomId), { roles, rolesUpdatedAt: serverTimestamp() });
-  });
-}
+    return runInInjectionContext(this.env, async () => {
+      await updateDoc(this.roomRef(roomId), { roles, rolesUpdatedAt: serverTimestamp() });
+    });
+  }
 }

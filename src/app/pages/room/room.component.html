@@ -43,7 +43,6 @@
     <mat-card-title>Joueurs</mat-card-title>
     <mat-card-content>
       <mat-list>
-
         @for (p of (playersVM$ | async); track p.uid) {
           <mat-list-item>
             <mat-icon matListItemIcon fontSet="material-symbols-outlined">person</mat-icon>
@@ -67,7 +66,6 @@
         } @empty {
           <div class="p-3 text-muted">Aucun joueur pour le moment…</div>
         }
-
       </mat-list>
     </mat-card-content>
   </mat-card>
@@ -81,6 +79,38 @@
       </button>
     </mat-card-content>
   </mat-card>
+
+  <!-- Point de départ (synchro signals: inputs <-> canvas) -->
+  <mat-card class="mt-3">
+    <mat-card-title>Point de départ</mat-card-title>
+    <mat-card-content>
+      <div class="spawn-grid">
+        <app-map-picker
+          [xy]="spawn.xy()"
+          (xyChange)="spawn.set($event)">
+        </app-map-picker>
+
+        <div class="spawn-form">
+          <label class="field">
+            <span>X</span>
+            <input type="number"
+                  [value]="spawn.xy().x"
+                  (input)="spawn.set({ x: ($any($event.target).valueAsNumber ?? 0), y: spawn.xy().y })"
+                  step="1" min="-50" max="50">
+          </label>
+
+          <label class="field">
+            <span>Y</span>
+            <input type="number"
+                  [value]="spawn.xy().y"
+                  (input)="spawn.set({ x: spawn.xy().x, y: ($any($event.target).valueAsNumber ?? 0) })"
+                  step="1" min="-50" max="50">
+          </label>
+        </div>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
 
   <!-- Logs debug -->
   @if (writes?.length) {
@@ -98,6 +128,4 @@
       </mat-card-content>
     </mat-card>
   }
-
 </div>
-

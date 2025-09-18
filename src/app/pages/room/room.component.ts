@@ -5,10 +5,8 @@ import {
 import { Router, ActivatedRoute } from '@angular/router';
 import { AsyncPipe } from '@angular/common';
 import {
-  Observable, Subscription, combineLatest, map, startWith, of, firstValueFrom,
-  filter,
-  take,
-  shareReplay
+  Observable, Subscription, combineLatest, map, of, firstValueFrom,
+  filter, take, shareReplay
 } from 'rxjs';
 
 // Material
@@ -20,12 +18,18 @@ import { MatListModule } from '@angular/material/list';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
-// Auth (AngularFire fournit l’instance Auth modulaire)
+// Auth
 import { Auth as FirebaseAuth, signInAnonymously } from '@angular/fire/auth';
 
 // Modèles & services
 import { Player } from './player.model';
 import { Role, RoomService, RoomDoc } from './room.service';
+
+// UI
+import { MapPickerComponent } from './ui/map-picker.component';
+
+// Spawn (signals partagés)
+import { SpawnCoordService } from '../../services/spawn-coord.service';
 
 type PlayerVM = Player & { roleResolved: Role | null };
 
@@ -37,6 +41,7 @@ type PlayerVM = Player & { roleResolved: Role | null };
     AsyncPipe,
     MatToolbarModule, MatButtonModule, MatIconModule,
     MatCardModule, MatListModule, MatProgressBarModule, MatTooltipModule,
+    MapPickerComponent
   ],
   templateUrl: './room.component.html',
   styleUrls: ['./room.component.scss'],
@@ -47,6 +52,9 @@ export class RoomComponent implements OnInit, OnDestroy {
   private readonly env      = inject(EnvironmentInjector);
   protected readonly auth   = inject(FirebaseAuth);
   private readonly roomSvc  = inject(RoomService);
+
+  /** Service partagé pour le point de départ */
+  readonly spawn = inject(SpawnCoordService);
 
   @Input() roomId = '';
   @Input() isOwner = false; // fallback si fourni par parent
@@ -78,9 +86,7 @@ export class RoomComponent implements OnInit, OnDestroy {
 
     // Auth + ensure player doc
     runInInjectionContext(this.env, async () => {
-      if (!this.auth.currentUser) {
-        await signInAnonymously(this.auth);
-      }
+      if (!this.auth.currentUser) await signInAnonymously(this.auth);
       const uid = this.auth.currentUser!.uid;
       const displayName = this.auth.currentUser?.displayName || 'Joueur';
       try {
@@ -97,7 +103,6 @@ export class RoomComponent implements OnInit, OnDestroy {
       this.room$      = this.roomSvc.room$(this.roomId).pipe(shareReplay({bufferSize:1, refCount:true}));
 
       const uid = this.auth.currentUser?.uid ?? '';
-
       this.isOwner$ = this.room$.pipe(map(r => !!r && r.ownerUid === uid));
 
       this.canStart$ = combineLatest([this.players$, this.room$]).pipe(
@@ -118,8 +123,9 @@ export class RoomComponent implements OnInit, OnDestroy {
             ...p,
             roleResolved: (p.role ?? roles[p.uid] ?? null) as PlayerVM['roleResolved'],
           }));
-        })
-      ).pipe(shareReplay({bufferSize:1, refCount:true}));;
+        }),
+        shareReplay({bufferSize:1, refCount:true})
+      );
     });
 
     // Suivre mon état ready
@@ -184,44 +190,41 @@ export class RoomComponent implements OnInit, OnDestroy {
    */
   async chooseRandomHunter(among: 'all' | 'ready' = 'all') {
     try {
-      // 1) attendre la 1ʳᵉ valeur NON VIDE de playersVM$
       const list = await firstValueFrom(
-        this.playersVM$.pipe(
-          filter(arr => Array.isArray(arr) && arr.length > 0),
-          take(1)
-        )
+        this.playersVM$.pipe(filter(arr => Array.isArray(arr) && arr.length > 0), take(1))
       );
 
-      // 2) construire le pool depuis CE snapshot UI
       const allPlayers = list.filter(p => p?.uid && !String(p.uid).startsWith('bot-'));
       const readyPlayers = allPlayers.filter(p => !!p.ready);
 
       let pool = allPlayers;
-      if (among === 'ready') {
-        pool = readyPlayers.length ? readyPlayers : allPlayers; // fallback auto
-      }
+      if (among === 'ready') pool = readyPlayers.length ? readyPlayers : allPlayers;
 
       if (!pool.length) {
         this.log(`Owner: tirage chasseur impossible (joueurs: ${allPlayers.length}, prêts: ${readyPlayers.length}, pool: ${among})`);
         return;
       }
 
-      // 3) tirage
       const idx = Math.floor(Math.random() * pool.length);
       const hunterUid = pool[idx].uid;
 
-      // 4) construire les rôles à appliquer
       const roles: Record<string, 'chasseur' | 'chassé'> = {};
-      for (const p of allPlayers) {
-        roles[p.uid] = (p.uid === hunterUid ? 'chasseur' : 'chassé');
-      }
+      for (const p of allPlayers) roles[p.uid] = (p.uid === hunterUid ? 'chasseur' : 'chassé');
 
-      // 5) appliquer les rôles (owner-only selon tes règles)
       await this.roomSvc.applyRoles(this.roomId, roles);
-
       this.log(`Owner: chasseur tiré au sort → ${hunterUid} (joueurs: ${allPlayers.length}, prêts: ${readyPlayers.length}, pool: ${among})`);
     } catch (e: any) {
       this.log(`Owner: tirage chasseur — ERREUR: ${e?.message || e}`);
     }
+  }
+
+  // Helpers pour les <input> number:
+  onInputX(v: string) {
+    const n = Number(v);
+    if (Number.isFinite(n)) this.spawn.setX(n);
+  }
+  onInputY(v: string) {
+    const n = Number(v);
+    if (Number.isFinite(n)) this.spawn.setY(n);
   }
 }

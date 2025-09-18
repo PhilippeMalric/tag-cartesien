@@ -5,6 +5,7 @@ import { GAME_CONSTANTS, TagEvent } from './play.models';
 import type { Player } from '../room/player.model';
 import type { PlayCtx } from './play.types';
 import { ToastService } from '../../services/toast.service';
+import { clamp, remainingInvulnMs, findVictimWithinRadius } from './play.helpers';
 
 /**
  * Branche toute la logique “runtime” (auth, listeners, subscriptions, loop).
@@ -21,27 +22,27 @@ export function setupPlay(ctx: PlayCtx): () => void {
   const onKeyUp = (e: KeyboardEvent) => ctx.keys.delete(e.key.toLowerCase());
 
   const isOwnerNow = () => !!ctx.uid && !!ctx.roomOwnerUid && ctx.uid === ctx.roomOwnerUid;
-  const moveCooldownMs = () => ctx.role === 'chasseur'
-    ? GAME_CONSTANTS.MOVE_COOLDOWN_MS_CHASSEUR
-    : GAME_CONSTANTS.MOVE_COOLDOWN_MS_CHASSE;
-  const stepUnits = () => ctx.role === 'chasseur'
-    ? GAME_CONSTANTS.STEP_UNITS_CHASSEUR
-    : GAME_CONSTANTS.STEP_UNITS_CHASSE;
+  const moveCooldownMs = () =>
+    ctx.role === 'chasseur'
+      ? GAME_CONSTANTS.MOVE_COOLDOWN_MS_CHASSEUR
+      : GAME_CONSTANTS.MOVE_COOLDOWN_MS_CHASSE;
+  const stepUnits = () =>
+    ctx.role === 'chasseur'
+      ? GAME_CONSTANTS.STEP_UNITS_CHASSEUR
+      : GAME_CONSTANTS.STEP_UNITS_CHASSE;
   const moveReady = () => (performance.now() - ctx.lastMoveAt) >= moveCooldownMs();
 
-
-
-  
   // --------- BOOTSTRAP APRÈS AUTH ---------
   const bootstrap = () => {
+    // Flag : effectuer le spawn initial une seule fois
+    let didInitialSpawn = false;
+
     // Clavier
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
 
     // Noms (annonces)
     playersSub = ctx.roomSvc.players$(ctx.matchId).subscribe((players: Player[]) => {
-      // rien à stocker ici côté ctx, on résout les noms “à la volée” via map Firestore côté MatchService si besoin
-      // (si tu veux garder un map des noms: crée un Map<string,string> sur ctx et remplis-la ici)
       ctx.cd.markForCheck();
     });
 
@@ -50,6 +51,23 @@ export function setupPlay(ctx: PlayCtx): () => void {
       if (d) {
         ctx.role = (d.role ?? ctx.role ?? null) as any;
         ctx.myScore = d.score ?? 0;
+
+        // Spawn initial : privilégie le spawn choisi (room) s'il existe
+        if (!didInitialSpawn) {
+          const sp = (d as any)?.spawn;
+          if (sp && Number.isFinite(sp.x) && Number.isFinite(sp.y)) {
+            ctx.me.x = clamp(sp.x, -50, 50);
+            ctx.me.y = clamp(sp.y, -50, 50);
+          } else {
+            const rnd = pickRespawn();
+            ctx.me.x = rnd.x;
+            ctx.me.y = rnd.y;
+          }
+          ctx.positions.writeSelf(ctx.matchId, ctx.uid, ctx.me.x, ctx.me.y);
+          ctx.lastMoveAt = performance.now() - moveCooldownMs();
+          ctx.moveProgress = 100;
+          didInitialSpawn = true;
+        }
       }
       ctx.cd.markForCheck();
     });
@@ -74,7 +92,7 @@ export function setupPlay(ctx: PlayCtx): () => void {
             } catch {}
           });
         }
-        ctx.hunterUid = Object.keys(roles).find(k => roles[k] === 'chasseur') ?? null;
+        ctx.hunterUid = Object.keys(roles).find((k) => roles[k] === 'chasseur') ?? null;
       }
 
       const endMs = room.roundEndAtMs as number | undefined;
@@ -94,7 +112,6 @@ export function setupPlay(ctx: PlayCtx): () => void {
       // Auto-spawn bots si demandé (une fois)
       if (isOwnerNow() && (ctx.desiredBots ?? 0) > 0) {
         ctx.bots.spawn(ctx.matchId, Math.min(ctx.desiredBots!, 12));
-        // on zero pour éviter respawn si room$ émet de nouveau
         ctx.desiredBots = 0;
       }
 
@@ -113,12 +130,15 @@ export function setupPlay(ctx: PlayCtx): () => void {
         handledEventIds.add(id);
 
         if (ev.type === 'tag') {
-          // Annonce simple (si tu as un map de noms, remplace ev.* par affichage lisible)
-          ctx.recentTag = { label: `${ev.hunterUid.slice(0,6)} a tagué ${ev.victimUid.slice(0,6)}`, until: Date.now() + 2500 };
+          ctx.recentTag = {
+            label: `${ev.hunterUid.slice(0, 6)} a tagué ${ev.victimUid.slice(0, 6)}`,
+            until: Date.now() + 2500,
+          };
 
           if (ev.victimUid === ctx.uid) {
             const { x, y } = pickRespawn(ev.x, ev.y);
-            ctx.me.x = x; ctx.me.y = y;
+            ctx.me.x = x;
+            ctx.me.y = y;
 
             ctx.invulnerableUntil = performance.now() + GAME_CONSTANTS.INVULN_MS;
             const untilMs = Date.now() + GAME_CONSTANTS.INVULN_MS;
@@ -136,17 +156,9 @@ export function setupPlay(ctx: PlayCtx): () => void {
       ctx.cd.markForCheck();
     });
 
-    // Positions + spawn initial
+    // Positions : écoute globale (merge joueurs + bots)
     ctx.positions.attachPresence(ctx.matchId, ctx.uid);
     ctx.positions.startListening(ctx.matchId);
-
-    {
-      const spawn = pickRespawn();
-      ctx.me.x = spawn.x; ctx.me.y = spawn.y;
-      ctx.positions.writeSelf(ctx.matchId, ctx.uid, spawn.x, spawn.y);
-      ctx.lastMoveAt = performance.now() - moveCooldownMs();
-      ctx.moveProgress = 100;
-    }
 
     ctx.positions.positions$.subscribe((map) => {
       ctx.debug.posUids = Object.keys(map || {});
@@ -174,47 +186,52 @@ export function setupPlay(ctx: PlayCtx): () => void {
       }
 
       // Direction
-      let vx = 0, vy = 0;
+      let vx = 0,
+        vy = 0;
       const k = ctx.keys;
-      if (k.has('w') || k.has('z') || k.has('arrowup'))    vy -= 1;
-      if (k.has('s') || k.has('arrowdown'))                vy += 1;
-      if (k.has('a') || k.has('q') || k.has('arrowleft'))  vx -= 1;
-      if (k.has('d') || k.has('arrowright'))               vx += 1;
+      if (k.has('w') || k.has('z') || k.has('arrowup')) vy -= 1;
+      if (k.has('s') || k.has('arrowdown')) vy += 1;
+      if (k.has('a') || k.has('q') || k.has('arrowleft')) vx -= 1;
+      if (k.has('d') || k.has('arrowright')) vx += 1;
       const mag = Math.hypot(vx, vy);
-      if (mag > 0) { vx /= mag; vy /= mag; }
+      if (mag > 0) {
+        vx /= mag;
+        vy /= mag;
+      }
 
       // Pas discret si prêt
       if (ctx.uid && moveReady() && mag > 0) {
         const step = stepUnits();
         const nx = Math.max(-50, Math.min(50, ctx.me.x + Math.round(vx * step)));
         const ny = Math.max(-50, Math.min(50, ctx.me.y + Math.round(vy * step)));
-        ctx.me.x = nx; ctx.me.y = ny;
+        ctx.me.x = nx;
+        ctx.me.y = ny;
         ctx.positions.writeSelf(ctx.matchId, ctx.uid, nx, ny);
         ctx.lastMoveAt = performance.now();
       }
 
       // Tag (chasseur)
-      if (ctx.role === 'chasseur'
-          && (performance.now() - ctx.lastTagMs) >= GAME_CONSTANTS.TAG_COOLDOWN_MS) {
+      if (ctx.role === 'chasseur' && performance.now() - ctx.lastTagMs >= GAME_CONSTANTS.TAG_COOLDOWN_MS) {
         const victim = findVictimWithinRadius(ctx);
         if (victim) {
           const projected = ctx.myScore + 1;
           if (remainingInvulnMs(victim as any) > 0) {
             runInInjectionContext(ctx.env, () => {
               const toast = inject(ToastService);
-              toast.toast(`Invulnérable encore ${(remainingInvulnMs(victim as any)/1000).toFixed(1)} s`);
+              toast.toast(`Invulnérable encore ${(remainingInvulnMs(victim as any) / 1000).toFixed(1)} s`);
             });
-            return;
+          } else {
+            ctx.match
+              .emitTag(ctx.matchId, ctx.me.x, ctx.me.y, victim.uid)
+              .then(() => {
+                ctx.lastTagMs = performance.now();
+                ctx.match.endIfTargetReached(ctx.matchId, projected);
+              })
+              .catch((e: unknown) => {
+                // OK d’ignorer si la victime est bot et non-supportée par Firestore
+                console.error('[emitTag]', e);
+              });
           }
-          ctx.match.emitTag(ctx.matchId, ctx.me.x, ctx.me.y, victim.uid)
-            .then(() => {
-              ctx.lastTagMs = performance.now();
-              ctx.match.endIfTargetReached(ctx.matchId, projected);
-            })
-            .catch((e: unknown) => {
-              // OK d’ignorer si la victime est bot et non-supportée par Firestore
-              console.error('[emitTag]', e);
-            });
         }
       }
 
@@ -225,7 +242,7 @@ export function setupPlay(ctx: PlayCtx): () => void {
         role: ctx.role,
         invulnerableUntil: ctx.invulnerableUntil,
         tagRadius: GAME_CONSTANTS.TAG_RADIUS,
-        hunterUid: ctx.hunterUid,            // ← NEW
+        hunterUid: ctx.hunterUid, // ← NEW
       });
 
       rafId = requestAnimationFrame(loop);
@@ -236,7 +253,10 @@ export function setupPlay(ctx: PlayCtx): () => void {
   // Auth → bootstrap
   runInInjectionContext(ctx.env, () => {
     ctx.auth.onAuthStateChanged((u) => {
-      if (!u) { ctx.router.navigate(['/auth']); return; }
+      if (!u) {
+        ctx.router.navigate(['/auth']);
+        return;
+      }
       const first = !ctx.uid;
       ctx.uid = u.uid;
       ctx.debug.uid = ctx.uid;
@@ -261,27 +281,4 @@ export function setupPlay(ctx: PlayCtx): () => void {
     // Nettoyage bots si owner (évite bots fantômes)
     if (isOwnerNow()) ctx.bots.stopAll(ctx.matchId);
   };
-
-
-  
-}
-
-// helpers/time.ts
-export function remainingInvulnMs(victim: { lastSpawnAt?: number; lastTaggedAt?: number }, C = GAME_CONSTANTS) {
-  const now = Date.now();
-  const sinceSpawn = victim.lastSpawnAt ? now - victim.lastSpawnAt : Infinity;
-  const sinceTag   = victim.lastTaggedAt ? now - victim.lastTaggedAt : Infinity;
-  const rem1 = Math.max(0, C.INVULN_MS - sinceSpawn);
-  const rem2 = Math.max(0, C.TAG_COOLDOWN_MS   - sinceTag);
-  return Math.max(rem1, rem2);
-}
-
-// --- Utils ---
-function findVictimWithinRadius(ctx: PlayCtx): { uid: string; dist: number } | null {
-  let best: { uid: string; dist: number } | null = null;
-  for (const [uid, p] of ctx.others) {
-    const d = Math.hypot(p.x - ctx.me.x, p.y - ctx.me.y);
-    if (d <= GAME_CONSTANTS.TAG_RADIUS && (!best || d < best.dist)) best = { uid, dist: d };
-  }
-  return best;
 }
