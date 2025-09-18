@@ -1,42 +1,12 @@
-<div class="sb-container" [class.sb-collapsed]="collapsed">
-  <mat-card class="sb-card" appearance="outlined">
-    <div class="sb-header">
-      <div class="sb-title">
-        <mat-icon fontSet="material-symbols-outlined" aria-hidden="true">leaderboard</mat-icon>
-        <span>Scores</span>
-      </div>
-      <button mat-icon-button (click)="toggle()" [matTooltip]="collapsed ? 'Ouvrir' : 'Réduire'">
-        <mat-icon fontSet="material-symbols-outlined">
-          {{ collapsed ? 'unfold_more' : 'unfold_less' }}
-        </mat-icon>
-      </button>
-    </div>
-
-    <div class="sb-body" *ngIf="!collapsed">
-      <div class="sb-row sb-head">
-        <div class="col-rank">#</div>
-        <div class="col-name">Joueur</div>
-        <div class="col-score">Score</div>
-      </div>
-      <mat-divider></mat-divider>
-
-      <ng-container *ngIf="vm$ | async as rows; else empty">
-        <div class="sb-row" *ngFor="let r of rows; index as i; trackBy: trackByUid">
-          <div class="col-rank">{{ i + 1 }}</div>
-          <div class="col-name">
-            <span class="name" [class.self]="r.isSelf">
-              <span class="emoji" *ngIf="r.isBot" aria-label="bot" title="Bot">🤖</span>
-              {{ r.displayName }}
-            </span>
-            <mat-chip *ngIf="r.isSelf" class="chip-self" color="primary" selected>toi</mat-chip>
-          </div>
-          <div class="col-score">{{ r.score }}</div>
-        </div>
-      </ng-container>
-
-      <ng-template #empty>
-        <div class="sb-empty">Aucun joueur</div>
-      </ng-template>
-    </div>
-  </mat-card>
+<div class="scoreboard">
+  <div
+    class="line"
+    *ngFor="let p of vm$ | async; trackBy: trackByUid; index as i"
+    [class.me]="p.isSelf"
+    [class.bot]="p.isBot"
+  >
+    <span class="pos">#{{ i + 1 }}</span>
+    <span class="name">{{ p.displayName }}</span>
+    <span class="score">{{ p.score }}</span>
+  </div>
 </div>
