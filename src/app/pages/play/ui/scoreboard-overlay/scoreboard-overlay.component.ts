@@ -1,31 +1,27 @@
-import { ChangeDetectionStrategy, Component, Input, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { MatCardModule } from '@angular/material/card';
-import { MatIconModule } from '@angular/material/icon';
-import { MatButtonModule } from '@angular/material/button';
-import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatDividerModule } from '@angular/material/divider';
-import { MatChipsModule } from '@angular/material/chips';
-import { Observable } from 'rxjs';
-import { ScoreboardAdapterService, PlayerVM } from './scoreboard-adapter.service';
+import {Component, Input, OnInit, inject} from '@angular/core';
+import {AsyncPipe, NgForOf, NgIf} from '@angular/common';
+import {
+  PlayerVM,
+  ScoreboardAdapterService,
+} from './scoreboard-adapter.service';
 
 @Component({
   selector: 'app-scoreboard-overlay',
   standalone: true,
-  imports: [CommonModule, MatCardModule, MatIconModule, MatButtonModule, MatTooltipModule, MatDividerModule, MatChipsModule],
+  imports: [AsyncPipe, NgForOf, NgIf],
   templateUrl: './scoreboard-overlay.component.html',
   styleUrls: ['./scoreboard-overlay.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ScoreboardOverlayComponent {
-  @Input() collapsed = false;
+export class ScoreboardOverlayComponent implements OnInit {
+  @Input({required: true}) roomId!: string;
+
   private adapter = inject(ScoreboardAdapterService);
 
-  vm$: Observable<PlayerVM[]> = this.adapter.vm$;
+  vm$ = this.adapter.vm$(this.roomId);
 
-  toggle() {
-    this.collapsed = !this.collapsed;
+  ngOnInit(): void {
+    this.vm$ = this.adapter.vm$(this.roomId);
   }
 
-  trackByUid = (_: number, r: PlayerVM) => r.uid;
+  trackByUid = (_: number, p: PlayerVM) => p.uid;
 }

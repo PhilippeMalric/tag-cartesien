@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { authState, Auth as FirebaseAuth } from '@angular/fire/auth';
 import { Firestore, doc, docData, collection, collectionData, updateDoc } from '@angular/fire/firestore';
-import { addDoc, getDoc, increment, limit, orderBy, query } from 'firebase/firestore';
+import { addDoc, getDoc, increment, limit, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import { Observable, firstValueFrom, map, shareReplay } from 'rxjs';
 import { MyPlayerDoc, RoomDoc, TagEvent } from './play.models';
 
@@ -11,6 +11,9 @@ export class MatchService {
   readonly fs = inject(Firestore);
   private auth = inject(FirebaseAuth);
   get uid(): string | undefined { return this.auth.currentUser?.uid || undefined; }
+  
+  private readonly EMIT_COOLDOWN_MS = 5000;
+  private _lastEmitByHunter = new Map<string, number>(); // key = uid
 
   myPlayer$(matchId: string): Observable<MyPlayerDoc> {
     const uid = this.uid!;
@@ -45,22 +48,36 @@ export class MatchService {
   }
 
   async emitTag(matchId: string, x: number, y: number, victimUid: string) {
-    const uid = this.uid; if (!uid) return;
+    const uid = this.uid;
+    if (!uid) return;
 
-    // iFrame côté victime (anti retri)
-    const victim = await this.getPlayer(matchId, victimUid);
     const now = Date.now();
-    if (victim?.iFrameUntilMs && now < victim.iFrameUntilMs) {
-      throw new Error('victim-invulnerable');
+
+    // 🔒 Garde locale (évite double émission en < 5 s)
+    const lastLocal = this._lastEmitByHunter.get(uid) ?? 0;
+    if (now - lastLocal < this.EMIT_COOLDOWN_MS) {
+      const err: any = new Error('emit-cooldown');
+      err.retryInMs = this.EMIT_COOLDOWN_MS - (now - lastLocal);
+      throw err;
     }
 
-    const eventsCol = collection(this.fs, `rooms/${matchId}/events`);
-    await addDoc(eventsCol, {
-      type: 'tag', hunterUid: uid, victimUid, x, y,
-      ts: (await import('firebase/firestore')).serverTimestamp(),
-    });
+    
 
-    await updateDoc(doc(this.fs, `rooms/${matchId}/players/${uid}`), { score: increment(1) });
+    // 🟢 On "arme" le cooldown local tout de suite, et on revert en cas d'échec
+    this._lastEmitByHunter.set(uid, now);
+    try {
+      await addDoc(collection(this.fs, `rooms/${matchId}/events`), {
+        type: 'tag',
+        hunterUid: uid,
+        victimUid,
+        x, y,
+        ts: serverTimestamp(),
+      });
+    } catch (e) {
+      // Rollback si l'écriture échoue
+      this._lastEmitByHunter.delete(uid);
+      throw e;
+    }
   }
 
   async endIfTargetReached(matchId: string, projectedMyScore: number) {
@@ -85,12 +102,20 @@ export class MatchService {
   }
 
   async getMyPlayerIdFromAuth(): Promise<string> {
-  
-  // essaie d’abord le courant
-  const cur = this.auth.currentUser?.uid;
-  if (cur) return cur;
-  // sinon attends le prochain authState
-  const u = await firstValueFrom(authState(this.auth));
-  return u?.uid ?? '';
-}
+    
+    // essaie d’abord le courant
+    const cur = this.auth.currentUser?.uid;
+    if (cur) return cur;
+    // sinon attends le prochain authState
+    const u = await firstValueFrom(authState(this.auth));
+    return u?.uid ?? '';
+  }
+
+  topPlayers$(roomId: string, top = 8): Observable<Array<{ uid: string; score: number; displayName?: string; combo?: number }>> {
+    const col = collection(this.fs, `rooms/${roomId}/players`);
+    const q = query(col, orderBy('score', 'desc'), limit(top));
+    return collectionData(q, { idField: 'uid' }) as any;
+  }
+
+
 }
