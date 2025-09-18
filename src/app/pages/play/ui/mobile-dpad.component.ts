@@ -7,16 +7,16 @@ import { CommonModule } from '@angular/common';
   imports: [CommonModule],
   template: `
     <div class="dpad" >
-      <button class="btn up" (touchstart)="emitMove('up')"    (touchend)="emitR('up')"
+      <button class="btn up" (touchstart)="emitMove('up')"    (click)="emitMove('up')"
                >▲</button>
 
-      <button class="btn left" (touchstart)="emitMove('left')"    (touchend)="emitR('left')"
+      <button class="btn left" (touchstart)="emitMove('left')"    (click)="emitMove('left')"
                >◄</button>
 
-      <button class="btn down"  (touchstart)="emitMove('down')"    (touchend)="emitR('down')"
+      <button class="btn down"  (touchstart)="emitMove('down')"    (click)="emitMove('down')"
               >▼</button>
 
-      <button class="btn right"  (touchstart)="emitMove('right')"    (touchend)="emitR('right')"
+      <button class="btn right"  (touchstart)="emitMove('right')"    (click)="emitMove('right')"
               >►</button>
     </div>
   `,

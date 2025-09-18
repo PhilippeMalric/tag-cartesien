@@ -1,5 +1,5 @@
 import { ApplicationConfig, inject } from '@angular/core';
-import { provideRouter } from '@angular/router';
+import { provideRouter, withEnabledBlockingInitialNavigation } from '@angular/router';
 import { routes } from './app.routes';
 
 import { provideAnimations } from '@angular/platform-browser/animations';
@@ -20,7 +20,7 @@ import { MAT_ICON_DEFAULT_OPTIONS } from '@angular/material/icon';
 export const appConfig: ApplicationConfig = {
   providers: [
     { provide: MAT_ICON_DEFAULT_OPTIONS, useValue: { fontSet: 'material-symbols-outlined' } },
-    provideRouter(routes),
+    provideRouter(routes,withEnabledBlockingInitialNavigation()),
 
     // ✅ Animations Material (pas la version /async)
     provideAnimations(),

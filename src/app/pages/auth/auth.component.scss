@@ -42,7 +42,7 @@
   background: color-mix(in srgb, var(--mat-sys-primary) 20%, transparent);
   color: var(--mat-sys-on-primary-container);
 }
-.hero-icon mat-icon { font-size: 30px; line-height: 1; }
+.hero-icon mat-icon { font-size: 30px; line-height: 1; width: auto;height: auto;}
 
 .title { font-weight: 800; letter-spacing: .2px; }
 .subtitle { opacity: .85; }

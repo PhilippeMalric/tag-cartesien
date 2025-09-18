@@ -1,0 +1,229 @@
+import { ApplicationConfig, inject } from '@angular/core';
+import { provideRouter } from '@angular/router';
+import { routes } from './app.routes';
+
+import { provideAnimations } from '@angular/platform-browser/animations';
+
+// Firebase App
+import { provideFirebaseApp, initializeApp, FirebaseApp } from '@angular/fire/app';
+import { environment } from '../environments/environment';
+
+// Firebase Auth
+import { provideAuth, initializeAuth, getAuth } from '@angular/fire/auth';
+import { browserSessionPersistence } from 'firebase/auth';
+
+// Firestore / RTDB
+import { provideFirestore, getFirestore } from '@angular/fire/firestore';
+import { provideDatabase, getDatabase } from '@angular/fire/database';
+import { MAT_ICON_DEFAULT_OPTIONS } from '@angular/material/icon';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    { provide: MAT_ICON_DEFAULT_OPTIONS, useValue: { fontSet: 'material-symbols-outlined' } },
+    provideRouter(routes),
+
+    // ✅ Animations Material (pas la version /async)
+    provideAnimations(),
+
+    // ✅ Firebase App
+    provideFirebaseApp(() => initializeApp(environment.firebase)),
+
+    // ✅ Auth avec persistance "session" et app correctement injectée
+    provideAuth(() => {
+      const app = inject(FirebaseApp);
+      try {
+        // Initialise explicitement l'Auth avec persistance par session
+        return initializeAuth(app, { persistence: browserSessionPersistence });
+      } catch {
+        // Si déjà initialisé, on récupère simplement l'instance
+        return getAuth(app);
+      }
+    }),
+
+    // ✅ Firestore / Realtime Database
+    provideFirestore(() => getFirestore()),
+    provideDatabase(() => getDatabase()),
+  ],
+};
+// src/app/app.routes.ts
+import { Routes } from '@angular/router';
+import { Score } from './pages/score/score';
+
+export const routes: Routes = [
+  { path: 'auth', loadComponent: () => import('./pages/auth/auth.component').then(m => m.AuthComponent) },
+   { path: 'lobby', loadComponent: () => import('./pages/lobby/lobby.component').then(m => m.LobbyComponent) },
+  { path: 'room/:id', loadComponent: () => import('./pages/room/room.component').then(m => m.RoomComponent) },
+   { path: 'play/:matchId', loadComponent: () =>
+      import('./pages/play/play.component').then(m => m.PlayComponent) },
+  { path: 'score/:matchId', component: Score },
+  { path: '', pathMatch: 'full', redirectTo: 'auth' },
+  { path: '**', redirectTo: 'auth' },
+];
+import { Component, OnInit, inject } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { AsyncPipe, CommonModule } from '@angular/common';
+import { Observable } from 'rxjs';
+
+import { ThemeService } from '../../services/theme.service';
+import { LobbyFacade } from './lobby.facade';
+import { RoomVM } from './lobby.types';
+
+// Material
+import { MatToolbarModule } from '@angular/material/toolbar';
+import { MatCardModule } from '@angular/material/card';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatListModule } from '@angular/material/list';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDividerModule } from '@angular/material/divider';
+import { RelativeTimePipe } from '../../shared/pipes/relative-time.pipe';
+import { MatChipsModule } from '@angular/material/chips';
+import { MatBadgeModule } from '@angular/material/badge';
+
+@Component({
+  selector: 'app-lobby',
+  standalone: true,
+  imports: [
+    FormsModule, AsyncPipe,
+    MatToolbarModule, MatCardModule, MatButtonModule, MatIconModule,
+    MatListModule, MatProgressBarModule, MatFormFieldModule, MatInputModule,
+    MatTooltipModule, MatDividerModule, RelativeTimePipe,  MatChipsModule, MatBadgeModule, CommonModule
+  ],
+  templateUrl: './lobby.component.html',
+  styleUrls: ['./lobby.component.scss'],
+})
+export class LobbyComponent implements OnInit {
+  readonly theme = inject(ThemeService);
+  private facade = inject(LobbyFacade);
+
+  // ⚠️ On expose la même API que l’ancien composant pour ne pas toucher au HTML
+
+  // flags/options
+  get showDevCleanup() { return this.facade.showDevCleanup; }
+  cleaning = () => this.facade.cleaning();
+  deletingId = () => this.facade.deletingId();
+  get loading() { return this.facade.loading(); }
+  get rooms$(): Observable<RoomVM[]> { return this.facade.rooms$; }
+
+  // champs liés au template ([(ngModel)])
+  get displayName() { return this.facade.displayName; }
+  set displayName(v: string) { this.facade.displayName = v; }
+
+  get joinCode() { return this.facade.joinCode; }
+  set joinCode(v: string) { this.facade.joinCode = v; }
+
+  ngOnInit(): void {
+    this.facade.init();
+  }
+
+  // méthodes appelées par le template
+  refresh() { this.facade.refresh(); }
+  createRoom() { this.facade.createRoom(); }
+  onJoinCodeInput(v: string) { this.facade.onJoinCodeInput(v); }
+  quickJoin() { this.facade.quickJoin(); }
+  join(r: RoomVM) { this.facade.join(r); }
+  cleanLobby() { 
+   // console.log("cleanLobby!");
+    
+    this.facade.cleanLobby(); }
+  onDeleteRoom(roomId: string) { this.facade.deleteRoom(roomId); }
+}
+import { Injectable, inject } from '@angular/core';
+import { authState, Auth as FirebaseAuth } from '@angular/fire/auth';
+import { Firestore, doc, docData, collection, collectionData, updateDoc } from '@angular/fire/firestore';
+import { addDoc, getDoc, increment, limit, orderBy, query } from 'firebase/firestore';
+import { Observable, firstValueFrom, map, shareReplay } from 'rxjs';
+import { MyPlayerDoc, RoomDoc, TagEvent } from './play.models';
+
+@Injectable({ providedIn: 'root' })
+export class MatchService {
+  // expo interne pour Play (update iFrame)
+  readonly fs = inject(Firestore);
+  private auth = inject(FirebaseAuth);
+  get uid(): string | undefined { return this.auth.currentUser?.uid || undefined; }
+
+  myPlayer$(matchId: string): Observable<MyPlayerDoc> {
+    const uid = this.uid!;
+    const meRef = doc(this.fs, `rooms/${matchId}/players/${uid}`);
+    return docData(meRef).pipe(
+      map(d => (d ?? {}) as MyPlayerDoc),
+      shareReplay({ bufferSize: 1, refCount: true })
+    );
+  }
+
+  room$(matchId: string): Observable<RoomDoc> {
+    const roomRef = doc(this.fs, `rooms/${matchId}`);
+    return docData(roomRef).pipe(
+      map(d => (d ?? {}) as RoomDoc),
+      shareReplay({ bufferSize: 1, refCount: true })
+    );
+  }
+
+  events$ = (matchId: string): Observable<TagEvent[]> => {
+    const eventsCol = collection(this.fs, `rooms/${matchId}/events`);
+    const qEvents = query(eventsCol, orderBy('ts', 'desc'), limit(20));
+    return collectionData(qEvents, { idField: 'id' }).pipe(
+      map(list => [...(list as TagEvent[])].reverse()),
+      shareReplay({ bufferSize: 1, refCount: true })
+    );
+  }
+
+  private async getPlayer(matchId: string, uid: string) {
+    const ref = doc(this.fs, `rooms/${matchId}/players/${uid}`);
+    const snap = await getDoc(ref);
+    return snap.exists() ? (snap.data() as MyPlayerDoc) : undefined;
+  }
+
+  async emitTag(matchId: string, x: number, y: number, victimUid: string) {
+    const uid = this.uid; if (!uid) return;
+
+    // iFrame côté victime (anti retri)
+    const victim = await this.getPlayer(matchId, victimUid);
+    const now = Date.now();
+    if (victim?.iFrameUntilMs && now < victim.iFrameUntilMs) {
+      throw new Error('victim-invulnerable');
+    }
+
+    const eventsCol = collection(this.fs, `rooms/${matchId}/events`);
+    await addDoc(eventsCol, {
+      type: 'tag', hunterUid: uid, victimUid, x, y,
+      ts: (await import('firebase/firestore')).serverTimestamp(),
+    });
+
+    await updateDoc(doc(this.fs, `rooms/${matchId}/players/${uid}`), { score: increment(1) });
+  }
+
+  async endIfTargetReached(matchId: string, projectedMyScore: number) {
+    const uid = this.uid; if (!uid) return;
+    const roomRef = doc(this.fs, `rooms/${matchId}`);
+    const snap = await getDoc(roomRef);
+    if (!snap.exists()) return;
+    const room = snap.data() as RoomDoc;
+    if (room.ownerUid !== uid) return;
+    if (!room?.targetScore || projectedMyScore < room.targetScore) return;
+    await updateDoc(roomRef, { state: 'ended' });
+  }
+
+  endByTimer = async (matchId: string) =>  {
+    const uid = this.uid; if (!uid) return;
+    const roomRef = doc(this.fs, `rooms/${matchId}`);
+    const snap = await getDoc(roomRef);
+    if (!snap.exists()) return;
+    const room = snap.data() as RoomDoc;
+    if (room.ownerUid !== uid) return;
+    await updateDoc(roomRef, { state: 'ended' });
+  }
+
+  async getMyPlayerIdFromAuth(): Promise<string> {
+  
+  // essaie d’abord le courant
+  const cur = this.auth.currentUser?.uid;
+  if (cur) return cur;
+  // sinon attends le prochain authState
+  const u = await firstValueFrom(authState(this.auth));
+  return u?.uid ?? '';
+}
+}

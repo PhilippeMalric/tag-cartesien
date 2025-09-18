@@ -37,7 +37,7 @@
   padding: .1rem .4rem;
   border-radius: 9999px;
   font-size: .75rem;
-  background: var(--mat-sys-surface-variant, #ececec);
+  background: var(--mat-sys-surface-variant, #1a1919);
 }
 .role-badge.hunter {
   background: var(--mat-sys-primary, #3f51b5);
@@ -53,18 +53,6 @@
   .mt-3 { margin-top: 1rem; }
   .p-3 { padding: 1rem; }
 
-  .role-badge {
-    padding: .1rem .4rem;
-    border-radius: 9999px;
-    font-size: .75rem;
-    background: var(--mat-sys-surface-variant, #ececec);
-    margin-left: .5rem;
-  }
-  .role-badge.hunter {
-    background: var(--mat-sys-primary, #3f51b5);
-    color: var(--mat-sys-on-primary, #fff);
-    font-weight: 600;
-  }
 
   .player-line {
     display: flex;

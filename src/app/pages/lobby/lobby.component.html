@@ -19,10 +19,10 @@
   <mat-card class="card">
     <mat-card-header>
       <mat-card-title class="h6">Créer une salle</mat-card-title>
-      <mat-card-subtitle>Choisis un nom d’affichage</mat-card-subtitle>
+      <mat-card-subtitle style="padding: 20px 0px;">Choisis un nom d’affichage</mat-card-subtitle>
     </mat-card-header>
 
-    <mat-card-content class="card-grid">
+    <mat-card-content class="card-grid" >
       <mat-form-field appearance="outline" class="fx1">
         <mat-label>Nom d’affichage</mat-label>
         <input
@@ -54,10 +54,10 @@
   <mat-card class="card">
     <mat-card-header>
       <mat-card-title class="h6">Rejoindre une salle</mat-card-title>
-      <mat-card-subtitle>Par code ou via la liste</mat-card-subtitle>
+      <mat-card-subtitle style="padding: 20px 0px;">Par code ou via la liste</mat-card-subtitle>
     </mat-card-header>
 
-    <mat-card-content class="join-grid">
+    <mat-card-content class="join-grid" style="padding-bottom: 20px;">
       <mat-form-field appearance="outline" class="fx1">
         <mat-label>Code de salle</mat-label>
         <input
@@ -90,14 +90,14 @@
 
     <mat-divider></mat-divider>
 
-    <mat-card-content>
+    <mat-card-content >
       @if (loading) {
         <mat-progress-bar mode="indeterminate"></mat-progress-bar>
       } @else {
         @let rooms = (rooms$ | async) ?? [];
 
         @if (rooms.length > 0) {
-          <mat-nav-list class="rooms">
+          <mat-nav-list class="rooms" style="padding-bottom: 20px;">
             @for (r of rooms; track r.id) {
               <mat-list-item class="room-item" (click)="join(r)"
                aria-label="Rejoindre la room {{ r.id }}">
