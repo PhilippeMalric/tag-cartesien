@@ -133,7 +133,8 @@ export class MapPickerComponent implements AfterViewInit, OnDestroy {
       if (i === 0) continue;
       ctx.fillText(String(i), cx - 4, cy - i * scale); // ⟵ inversé ici
     }
-
+ctx.fillText("Y",cx -2, cy - (55 * scale))
+ctx.fillText("X",cx + (55 * scale), cy)
     // point (utilise la convention cartésienne)
     const { x, y } = this.localXY();
     const px = cx + x * scale;
