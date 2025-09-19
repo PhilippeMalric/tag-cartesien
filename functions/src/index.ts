@@ -77,3 +77,34 @@ export const onTag = onDocumentCreated(
     });
   },
 );
+import * as functions from 'firebase-functions';
+import { getFirestore } from 'firebase-admin/firestore';
+import { getModeHandler } from './modes/factory';
+
+/** Route les events 'tag' vers le mode actif */
+export const onTagCreated = functions.firestore
+  .document('rooms/{matchId}/events/{eventId}')
+  .onCreate(async (snap, ctx) => {
+    const ev = snap.data();
+    if (!ev || ev.type !== 'tag') return;
+
+    const db = getFirestore();
+    const matchId = ctx.params.matchId as string;
+
+    const roomSnap = await db.doc(`rooms/${matchId}`).get();
+    const room = roomSnap.data() ?? {};
+    const playersQuery = await db.collection(`rooms/${matchId}/players`).get();
+    const players = new Map<string, any>();
+    playersQuery.forEach(d => players.set(d.id, d.data()));
+
+    const handler = await getModeHandler(room.mode);
+    await handler.onTag({
+      matchId,
+      hunterUid: ev.hunterUid,
+      victimUid: ev.victimUid,
+      now: Date.now(),
+      db,
+      room,
+      players,
+    });
+  });
