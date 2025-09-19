@@ -1,5 +1,6 @@
 export const environment = {
   production: true,
+   useEmulators: false,
   firebase: {
     apiKey: "AIzaSyCNOZ0-VK2yKemAJFcHvqaULQSr9IKKf8I",
   authDomain: "tag-cartesien.firebaseapp.com",
