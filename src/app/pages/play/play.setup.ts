@@ -43,6 +43,15 @@ export function setupPlay(ctx: PlayCtx): () => void {
 
     // Noms (annonces)
     playersSub = ctx.roomSvc.players$(ctx.matchId).subscribe((players: Player[]) => {
+      // Cherche le chasseur de façon robuste
+      let hunter: any = null;
+      if (ctx.hunterUid) {
+        hunter = players.find((p: any) => p?.uid === ctx.hunterUid || p?.id === ctx.hunterUid) ?? null;
+      }
+      if (!hunter) {
+        hunter = players.find((p: any) => p?.role === 'chasseur') ?? null;
+      }
+      ctx.myScore = hunter?.score ?? 0; // ← score du chasseur uniquement
       ctx.cd.markForCheck();
     });
 
@@ -50,7 +59,7 @@ export function setupPlay(ctx: PlayCtx): () => void {
     mySub = ctx.match.myPlayer$(ctx.matchId).subscribe((d) => {
       if (d) {
         ctx.role = (d.role ?? ctx.role ?? null) as any;
-        ctx.myScore = d.score ?? 0;
+        ;
 
         // Spawn initial : privilégie le spawn choisi (room) s'il existe
         if (!didInitialSpawn) {
@@ -92,7 +101,11 @@ export function setupPlay(ctx: PlayCtx): () => void {
             } catch {}
           });
         }
-        ctx.hunterUid = Object.keys(roles).find((k) => roles[k] === 'chasseur') ?? null;
+           const chasseurUids = Object.keys(roles).filter((k) => roles[k] === 'chasseur');
+           ctx.hunterUid = chasseurUids[0] ?? null; // ← un seul chasseur
+           if (chasseurUids.length > 1) {
+             console.warn('[setupPlay] Plusieurs "chasseur" détectés:', chasseurUids, '→ on prend le premier.');
+           }
       }
 
       const endMs = room.roundEndAtMs as number | undefined;

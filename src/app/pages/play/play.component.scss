@@ -91,6 +91,83 @@
   right: 16px;
 }
 
+/* Toast "tag" — overlay fixe, aucune influence sur le layout */
+.tag-toast {
+  position: fixed;           /* <-- ne déclenche pas de reflow du contenu */
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 1200;             /* au-dessus du contenu; ajuste si nécessaire */
+  pointer-events: none;      /* ne bloque pas les clics sur la page */
+
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 10px 14px;
+  border-radius: 9999px;
+
+  /* Thème clair/sombre compatible avec ton data-theme */
+  color: var(--toast-fg, #fff);
+  background: var(--toast-bg, rgba(20, 20, 20, 0.8));
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(6px);
+
+  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
+  max-width: min(92vw, 520px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  /* petite apparition sans reflow (transform/opacity seulement) */
+  opacity: 0;
+  transform: translateX(-50%) translateY(6px);
+  animation: tagToastIn 160ms ease-out forwards;
+}
+
+/* Icône Material à gauche */
+.tag-toast .mat-icon,
+.tag-toast mat-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+}
+
+/* Respecte "réduire les animations" */
+@media (prefers-reduced-motion: reduce) {
+  .tag-toast {
+    animation: none;
+    opacity: 1;
+    transform: translateX(-50%);
+  }
+}
+
+/* Animations d’entrée (optionnel) */
+@keyframes tagToastIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Variables light/dark si tu utilises html[data-theme] */
+html[data-theme="light"] .tag-toast {
+  --toast-bg: rgba(30, 30, 30, 0.85);
+  --toast-fg: #fff;
+}
+html[data-theme="dark"] .tag-toast,
+html.dark .tag-toast {
+  --toast-bg: rgba(240, 240, 240, 0.1);
+  --toast-fg: #fff;
+}
+
+
 /* Option : une petite poignée visible au survol (pas obligatoire)
 .cdk-drag {
   cursor: grab;
