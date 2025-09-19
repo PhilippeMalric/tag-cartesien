@@ -1,4 +1,4 @@
-﻿import { Injectable, EnvironmentInjector, runInInjectionContext } from '@angular/core';
+import { Injectable, EnvironmentInjector, runInInjectionContext } from '@angular/core';
 import {
   Firestore,
   doc, getDoc, setDoc, updateDoc, writeBatch,
@@ -130,7 +130,7 @@ export class RoomService {
     });
   }
 
-  /** Sauvegarde mon point de départ (dans mon doc player) */
+ /** Sauvegarde mon point de départ (dans mon doc player) */
   async setMySpawn(roomId: string, uid: string, spawn: { x: number; y: number }) {
     return runInInjectionContext(this.env, async () => {
       await updateDoc(this.playerRef(roomId, uid), {
@@ -141,7 +141,7 @@ export class RoomService {
       });
     });
   }
-
+  
   async setSpawn(roomId: string, uid: string, spawn: { x: number; y: number }) {
     return runInInjectionContext(this.env, async () => {
       await updateDoc(this.playerRef(roomId, uid), { spawn: { x: spawn.x, y: spawn.y } });
@@ -150,17 +150,11 @@ export class RoomService {
 
   /**
    * Applique des rôles fournis (construits côté composant avec playersVM$).
-   * Owner-only (tes règles). N'effectue AUCUNE lecture Firestore ici.
+   * Owner-only (tes règles). N'effectue AUCUNE lecture Firestore.
    */
-  async applyRoles(roomId: string, roles: Record<string, 'chasseur' | 'chassé'>): Promise<void> {
+ async applyRoles(roomId: string, roles: Record<string, 'chasseur' | 'chassé'>): Promise<void> {
     return runInInjectionContext(this.env, async () => {
       await updateDoc(this.roomRef(roomId), { roles, rolesUpdatedAt: serverTimestamp() });
-      // Optionnel: refléter sur chaque player
-      const batch = writeBatch(this.fs);
-      for (const [uid, role] of Object.entries(roles)) {
-        batch.set(this.playerRef(roomId, uid), { role }, { merge: true });
-      }
-      await batch.commit();
     });
   }
 }

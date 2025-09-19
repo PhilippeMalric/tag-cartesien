@@ -1,6 +1,6 @@
 import {
   Component, ElementRef, ViewChild, NgZone, OnDestroy, AfterViewInit,
-  effect, input, output, signal
+  OnChanges, SimpleChanges, Input, Output, EventEmitter, signal
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
@@ -13,26 +13,27 @@ export type XY = { x: number; y: number };
   templateUrl: './map-picker.component.html',
   styleUrls: ['./map-picker.component.scss'],
 })
-export class MapPickerComponent implements AfterViewInit, OnDestroy {
+export class MapPickerComponent implements AfterViewInit, OnDestroy, OnChanges {
   @ViewChild('cv', { static: true }) cv!: ElementRef<HTMLCanvasElement>;
 
   /** Entrée (valeur venue du parent) */
-  xy = input<XY>({ x: 0, y: 0 });
+  @Input() xy: XY = { x: 0, y: 0 };
   /** Sortie (événement de mise à jour) */
-  xyChange = output<XY>();
+  @Output() xyChange = new EventEmitter<XY>();
 
   /** État local (feedback instantané) */
-  private localXY = signal<XY>({ x: 0, y: 0 });
+  localXY = signal<XY>({ x: 0, y: 0 });
 
   public dragging = false;
   private ro?: ResizeObserver;
 
-  constructor(private zone: NgZone) {
-    effect(() => {
-      const v = this.xy();
-      this.localXY.set({ x: v.x, y: v.y });
+  constructor(private zone: NgZone) {}
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['xy'] && this.xy) {
+      this.localXY.set({ x: this.xy.x, y: this.xy.y });
       this.draw();
-    });
+    }
   }
 
   ngAfterViewInit(): void {
@@ -133,8 +134,9 @@ export class MapPickerComponent implements AfterViewInit, OnDestroy {
       if (i === 0) continue;
       ctx.fillText(String(i), cx - 4, cy - i * scale); // ⟵ inversé ici
     }
-ctx.fillText("Y",cx -2, cy - (55 * scale))
-ctx.fillText("X",cx + (55 * scale), cy)
+    ctx.fillText('Y', cx - 2, cy - (55 * scale));
+    ctx.fillText('X', cx + (55 * scale), cy);
+
     // point (utilise la convention cartésienne)
     const { x, y } = this.localXY();
     const px = cx + x * scale;

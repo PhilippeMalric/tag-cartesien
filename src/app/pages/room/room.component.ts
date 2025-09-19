@@ -3,7 +3,7 @@ import {
   EnvironmentInjector, runInInjectionContext
 } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
-import { AsyncPipe } from '@angular/common';
+import { AsyncPipe, CommonModule } from '@angular/common';
 import {
   Observable, Subscription, combineLatest, map, of, firstValueFrom,
   filter, take, shareReplay
@@ -41,7 +41,7 @@ type PlayerVM = Player & { roleResolved: Role | null };
     AsyncPipe,
     MatToolbarModule, MatButtonModule, MatIconModule,
     MatCardModule, MatListModule, MatProgressBarModule, MatTooltipModule,
-    MapPickerComponent
+    MapPickerComponent,CommonModule
   ],
   templateUrl: './room.component.html',
   styleUrls: ['./room.component.scss'],

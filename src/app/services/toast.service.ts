@@ -1,12 +1,11 @@
-// src/app/services/toast.service.ts
-import { Injectable } from '@angular/core';
+﻿import { Injectable, inject } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 @Injectable({ providedIn: 'root' })
 export class ToastService {
-  constructor(private snackBar: MatSnackBar) {}
-
+  private snack = inject(MatSnackBar);
   toast(message: string, duration = 2000) {
-    this.snackBar.open(message, 'OK', { duration });
+    try { this.snack.open(message, 'OK', { duration, horizontalPosition: 'center', verticalPosition: 'bottom' }); }
+    catch { console.log('[toast]', message); }
   }
 }

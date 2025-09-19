@@ -1,13 +1,11 @@
-<div class="map-wrap">
-  <canvas #cv
-    (pointerdown)="onPointerDown($event)"
-    (pointermove)="onPointerMove($event)"
-    (pointerup)="endDrag($event)"
-    (pointercancel)="endDrag($event)"
-    (pointerleave)="endDrag($event)"
-    aria-label="Sélection du point de départ"
-  ></canvas>
+<!-- src/app/pages/room/ui/map-picker.component.html -->
+<canvas #cv
+        (pointerdown)="onPointerDown($event)"
+        (pointermove)="onPointerMove($event)"
+        (pointerup)="endDrag($event)"
+        (pointercancel)="endDrag($event)"
+        style="width:100%;height:240px;touch-action:none;display:block;border-radius:12px;">
+</canvas>
 
-  <div class="coord-badge">x: {{ xy().x }} · y: {{ xy().y }}</div>
-
-</div>
+<!-- badge coord (utiliser le signal local) -->
+<div class="coord-badge">x: {{ localXY().x }} · y: {{ localXY().y }}</div>
