@@ -1,31 +1,37 @@
-import type { GameModeHandler, ModeName } from './types';
+import type { GameModeHandler, ModeName } from "./types.js";
 
-type LazyModule = () => Promise<{ default?: GameModeHandler } & Record<string, any>>;
 
-const REGISTRY: Record<ModeName, LazyModule> = {
-  classic:      () => import('./impl/classic'),
-  transmission: () => import('./impl/transmission'),
-  infection:    () => import('./impl/infection'),
-  freeze:       () => import('./impl/freeze'),
-  'hot-potato': () => import('./impl/hot-potato'),
-  assassin:     () => import('./impl/assassin'),
-  elimination:  () => import('./impl/elimination'),
-  koth:         () => import('./impl/koth'),
-} as const;
 
-const CACHE = new Map<ModeName, GameModeHandler>();
+// Registre des modes implémentés (extensions .js obligatoires en NodeNext)
+export const REGISTRY = Object.freeze({
+  classic:      () => import("./impl/classic.js"),
+  transmission: () => import("./impl/transmission.js"),
+  infection:    () => import("./impl/infection.js"),
+} as const);
+
+type RegistryKey = keyof typeof REGISTRY;
+
+const CACHE = new Map<RegistryKey, GameModeHandler>();
 
 export async function getModeHandler(name?: ModeName): Promise<GameModeHandler> {
-  const key = (name ?? 'classic') as ModeName;
+  const requested = (name ?? "classic") as ModeName;
+  const key: RegistryKey = (requested in REGISTRY ? requested : "classic") as RegistryKey;
+
   const cached = CACHE.get(key);
   if (cached) return cached;
 
-  const mod = await REGISTRY[key]().catch(() => REGISTRY['classic']());
+  const mod = await REGISTRY[key]().catch(() => REGISTRY.classic());
+
   const handler: GameModeHandler =
     (mod.default as GameModeHandler) ??
-    (Object.values(mod).find(v => v && typeof v === 'object' && 'onTag' in (v as any)) as GameModeHandler);
+    (Object.values(mod).find(
+      (v) => v && typeof v === "object" && "onTag" in (v as any)
+    ) as GameModeHandler);
 
-  if (!handler) throw new Error(`Mode handler introuvable: ${key}`);
+  if (!handler) {
+    throw new Error(`Mode handler not found in module for "${key}".`);
+  }
+
   CACHE.set(key, handler);
   return handler;
 }

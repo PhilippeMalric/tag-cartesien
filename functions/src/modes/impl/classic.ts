@@ -1,5 +1,5 @@
-import { FieldValue } from 'firebase-admin/firestore';
-import type { GameModeHandler } from '../types';
+import { FieldValue } from "firebase-admin/firestore";
+import type { GameModeHandler } from "../types.js";
 
 const classic: GameModeHandler = {
   async onTag({ db, matchId, hunterUid, victimUid, now }) {
@@ -11,7 +11,7 @@ const classic: GameModeHandler = {
       { merge: true }
     );
     await victimRef.set(
-      { iFrameUntilMs: Date.now() + 2000 },
+      { iFrameUntilMs: now + 2000 },
       { merge: true }
     );
   },

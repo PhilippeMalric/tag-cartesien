@@ -1,10 +1,12 @@
-import * as admin from "firebase-admin";
-import {getFirestore} from "firebase-admin/firestore";
-import {onDocumentCreated} from "firebase-functions/v2/firestore";
-import {setGlobalOptions} from "firebase-functions/v2";
+// functions/src/index.ts
+import { initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { setGlobalOptions } from "firebase-functions/v2";
+import { getModeHandler } from "./modes/factory.js"; // ← extension .js requise en NodeNext
 
-admin.initializeApp();
-setGlobalOptions({region: "northamerica-northeast1", maxInstances: 10});
+initializeApp();
+setGlobalOptions({ region: "northamerica-northeast1", maxInstances: 10 });
 
 type PlayerDoc = {
   score?: number;
@@ -21,7 +23,8 @@ type TagEventData = {
 
 /**
  * Déclenchée quand un event est créé dans rooms/{roomId}/events/{eventId}.
- * Valide, incrémente le score, gère iFrame & combo, fin de partie.
+ * → Résout le mode via la Factory et exécute son handler.
+ * → Si mode "classic", on termine quand targetScore est atteint (parité avec avant).
  */
 export const onTag = onDocumentCreated(
   "rooms/{roomId}/events/{eventId}",
@@ -37,74 +40,44 @@ export const onTag = onDocumentCreated(
     const victimUid = data.victimUid as string;
 
     const db = getFirestore();
-    const huntersPath = `rooms/${roomId}/players/${hunterUid}`;
-    const victimsPath = `rooms/${roomId}/players/${victimUid}`;
 
-    const hunterRef = db.doc(huntersPath);
-    const victimRef = db.doc(victimsPath);
+    // Charger room + players pour le handler
     const roomRef = db.doc(`rooms/${roomId}`);
-
-    await db.runTransaction(async (tx) => {
-      const [hunterDoc, victimDoc, roomDoc] = await Promise.all([
-        tx.get(hunterRef),
-        tx.get(victimRef),
-        tx.get(roomRef),
-      ]);
-      if (!hunterDoc.exists || !victimDoc.exists) return;
-
-      const now = Date.now();
-      const hunter = (hunterDoc.data() || {}) as PlayerDoc;
-      const room = roomDoc.exists ? roomDoc.data() || {} : {};
-
-      const score = hunter.score || 0;
-
-      tx.update(hunterRef, {
-        score: score + 1,
-        lastTagMs: now,
-      });
-
-      // Invulnérabilité victime
-      const IFR = 1500; // ms
-      tx.update(victimRef, {
-        iFrameUntilMs: now + IFR,
-      });
-
-      // Fin de partie si target atteinte
-      const target = (room as {targetScore?: number}).targetScore || 5;
-      if ((score +1) >= target) {
-        tx.update(roomRef, {state: "ended"});
-      }
-    });
-  },
-);
-import * as functions from 'firebase-functions';
-import { getFirestore } from 'firebase-admin/firestore';
-import { getModeHandler } from './modes/factory';
-
-/** Route les events 'tag' vers le mode actif */
-export const onTagCreated = functions.firestore
-  .document('rooms/{matchId}/events/{eventId}')
-  .onCreate(async (snap, ctx) => {
-    const ev = snap.data();
-    if (!ev || ev.type !== 'tag') return;
-
-    const db = getFirestore();
-    const matchId = ctx.params.matchId as string;
-
-    const roomSnap = await db.doc(`rooms/${matchId}`).get();
+    const roomSnap = await roomRef.get();
     const room = roomSnap.data() ?? {};
-    const playersQuery = await db.collection(`rooms/${matchId}/players`).get();
-    const players = new Map<string, any>();
-    playersQuery.forEach(d => players.set(d.id, d.data()));
 
-    const handler = await getModeHandler(room.mode);
+    const playersQuery = await db.collection(`rooms/${roomId}/players`).get();
+    const players = new Map<string, PlayerDoc>();
+    playersQuery.forEach((d) => players.set(d.id, (d.data() || {}) as PlayerDoc));
+
+    // Dispatcher vers le mode actif
+    const handler = await getModeHandler(room.mode as any);
     await handler.onTag({
-      matchId,
-      hunterUid: ev.hunterUid,
-      victimUid: ev.victimUid,
+      matchId: roomId,
+      hunterUid,
+      victimUid,
       now: Date.now(),
       db,
       room,
       players,
     });
-  });
+
+    // Parité: fin automatique en "classic" si target atteinte
+    const modeName = (room?.mode ?? "classic") as string;
+    if (modeName === "classic") {
+      const refreshedRoomSnap = await roomRef.get();
+      const refreshedRoom = refreshedRoomSnap.data() ?? {};
+      const target =
+        (refreshedRoom as { targetScore?: number }).targetScore ?? 5;
+
+      const hunterRef = db.doc(`rooms/${roomId}/players/${hunterUid}`);
+      const hunterDoc = await hunterRef.get();
+      const hunter = (hunterDoc.data() || {}) as PlayerDoc;
+      const score = hunter.score ?? 0;
+
+      if (score >= target) {
+        await roomRef.set({ state: "ended" }, { merge: true });
+      }
+    }
+  },
+);
