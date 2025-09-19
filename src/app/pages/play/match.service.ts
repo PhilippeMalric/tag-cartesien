@@ -53,12 +53,15 @@ export class MatchService {
 
     const now = Date.now();
 
-    // 🔒 Garde locale (évite double émission en < 5 s)
+    // 🔒 Garde locale (évite double émission en < 1 s)
     const lastLocal = this._lastEmitByHunter.get(uid) ?? 0;
+    
+    
     if (now - lastLocal < this.EMIT_COOLDOWN_MS) {
       const err: any = new Error('emit-cooldown');
       err.retryInMs = this.EMIT_COOLDOWN_MS - (now - lastLocal);
-      throw err;
+      console.log("now - lastLocal",now - lastLocal,this.EMIT_COOLDOWN_MS);
+     // throw err;
     }
 
     

@@ -1,0 +1,6 @@
+.score-card { max-width: 720px; margin: 16px auto; }
+.actions {
+  display: flex; gap: 12px; justify-content: flex-end;
+  padding: 12px 16px;
+}
+.muted { opacity: .7; padding: 8px 0; }

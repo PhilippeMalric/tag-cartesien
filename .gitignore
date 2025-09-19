@@ -48,3 +48,6 @@ functions/.runtimeconfig.json
 
 # --- Tests artifacts ---
 *.lcov
+
+snapshot_*.txt
+snapshot_app_functions_*.txt

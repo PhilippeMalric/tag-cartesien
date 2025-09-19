@@ -41,7 +41,7 @@ type PlayerVM = Player & { roleResolved: Role | null };
     AsyncPipe,
     MatToolbarModule, MatButtonModule, MatIconModule,
     MatCardModule, MatListModule, MatProgressBarModule, MatTooltipModule,
-    MapPickerComponent,CommonModule
+    MapPickerComponent, CommonModule
   ],
   templateUrl: './room.component.html',
   styleUrls: ['./room.component.scss'],
@@ -68,9 +68,12 @@ export class RoomComponent implements OnInit, OnDestroy {
   isOwner$!: Observable<boolean>;
   canStart$!: Observable<boolean>;
 
-  // UI
+  // UI état local
   myReady = false;
   isStarting = false;
+
+  // NEW — mode exposé dans l’UI (synchro avec room.mode)
+  mode: 'classic' | 'infection' | 'transmission' = 'classic';
 
   // Debug
   writes: string[] = [];
@@ -138,10 +141,14 @@ export class RoomComponent implements OnInit, OnDestroy {
       })
     );
 
-    // Naviguer quand la room démarre
+    // Naviguer quand la room démarre + synchro du mode
     this.subs.add(
       this.room$.subscribe(r => {
         if (!r) return;
+        // synchro mode local -> affichage
+        const m = (r as any).mode as any;
+        if (m && this.mode !== m) this.mode = m;
+
         if (r.state === 'running' || r.state === 'in-progress') {
           this.log(`NAV → /play/${this.roomId}`);
           this.router.navigate(['/play', this.roomId]);
@@ -215,6 +222,28 @@ export class RoomComponent implements OnInit, OnDestroy {
       this.log(`Owner: chasseur tiré au sort → ${hunterUid} (joueurs: ${allPlayers.length}, prêts: ${readyPlayers.length}, pool: ${among})`);
     } catch (e: any) {
       this.log(`Owner: tirage chasseur — ERREUR: ${e?.message || e}`);
+    }
+  }
+
+  // NEW — changer le mode (owner)
+  async setMode(m: 'classic'|'infection'|'transmission') {
+    try {
+      await this.roomSvc.setMode(this.roomId, m);
+      this.mode = m;
+      this.log(`FS setMode(${m})`);
+    } catch (e: any) {
+      this.log(`setMode — ERREUR: ${e?.message || e}`);
+    }
+  }
+
+  // NEW — bouton owner pour terminer la manche (utile pour infection)
+  async endNow() {
+    try {
+      await this.roomSvc.setState(this.roomId, 'ended');
+      this.log('FS setState(ended)');
+      // La redirection /score/:id sera gérée par Play → room.state change
+    } catch (e: any) {
+      this.log(`endNow — ERREUR: ${e?.message || e}`);
     }
   }
 

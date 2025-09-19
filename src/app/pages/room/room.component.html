@@ -27,6 +27,28 @@
       Prêts seulement
     </button>
   }
+ 
+@if (isOwner$ | async) {
+  <div class="ml-2" style="display:flex;align-items:center;gap:.5rem">
+    <span>Mode:</span>
+    <select [value]="mode" (change)="setMode(($any($event.target).value))" aria-label="Choisir le mode">
+      <option value="classic">classic</option>
+      <option value="infection">infection</option>
+      <option value="transmission">transmission</option>
+    </select>
+  </div>
+}
+@if (isOwner$ | async) {
+  <button
+    mat-stroked-button
+    color="warn"
+    class="ml-2"
+    (click)="endNow()"
+    matTooltip="Terminer la manche">
+    Terminer
+  </button>
+}
+
 
   @if (canStart$ | async) {
     <button mat-raised-button color="warn" (click)="start()" matTooltip="Démarrer la partie">
@@ -35,6 +57,9 @@
     </button>
   }
 </mat-toolbar>
+
+
+
 
 <div class="container">
 

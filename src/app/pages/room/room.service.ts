@@ -163,4 +163,14 @@ export class RoomService {
       await batch.commit();
     });
   }
+  async setMode(roomId: string, mode: 'classic'|'infection'|'transmission') {
+    const ref = doc(this.fs, `rooms/${roomId}`);
+    await updateDoc(ref, { mode, updatedAt: serverTimestamp() });
+  }
+
+  async setState(roomId: string, state: 'idle'|'running'|'in-progress'|'ended') {
+    const ref = doc(this.fs, `rooms/${roomId}`);
+    await updateDoc(ref, { state, updatedAt: serverTimestamp() });
+  }
+
 }

@@ -7,6 +7,7 @@ import type { PlayCtx } from './play.types';
 import { ToastService } from '../../services/toast.service';
 import { clamp, remainingInvulnMs, findVictimWithinRadius } from './play.helpers';
 
+
 /**
  * Branche toute la logique “runtime” (auth, listeners, subscriptions, loop).
  * Retourne un disposer à appeler dans ngOnDestroy().
@@ -234,6 +235,8 @@ export function setupPlay(ctx: PlayCtx): () => void {
               toast.toast(`Invulnérable encore ${(remainingInvulnMs(victim as any) / 1000).toFixed(1)} s`);
             });
           } else {
+            console.log("emitTag");
+            
             ctx.match
               .emitTag(ctx.matchId, ctx.me.x, ctx.me.y, victim.uid)
               .then(() => {

@@ -8,7 +8,8 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "serve:ssr:tag-cartesien": "node dist/tag-cartesien/server/server.mjs",
-    "deploy-h":"firebase deploy --only hosting"
+    "deploy-h":"firebase deploy --only hosting",
+    "emu":"firebase emulators:start --only firestore,database,auth,functions"
   },
   "prettier": {
     "printWidth": 100,

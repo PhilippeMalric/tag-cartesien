@@ -1,0 +1,34 @@
+<mat-card class="score-card">
+  <mat-card-title>Score — match <code>#{{ matchId }}</code></mat-card-title>
+  <mat-card-content>
+    <mat-list>
+      <ng-container *ngIf="top$ | async as rows; else loading">
+        <mat-list-item *ngFor="let p of rows; index as i">
+          <div matListItemTitle>
+            <strong>#{{ i + 1 }}</strong> — {{ p.displayName || p.uid | slice:0:6 }}
+          </div>
+          <div matListItemLine>Score : {{ p.score || 0 }}</div>
+        </mat-list-item>
+        <ng-container *ngIf="!rows?.length">
+          <div class="muted">Aucun score pour le moment…</div>
+        </ng-container>
+      </ng-container>
+    </mat-list>
+    <ng-template #loading>
+      <div class="muted">Chargement…</div>
+    </ng-template>
+  </mat-card-content>
+
+  <mat-divider></mat-divider>
+
+  <div class="actions">
+    <button mat-stroked-button color="primary" (click)="replay()">
+      <mat-icon fontSet="material-symbols-outlined">replay</mat-icon>
+      Rejouer cette salle
+    </button>
+    <button mat-raised-button color="accent" (click)="backToLobby()">
+      <mat-icon fontSet="material-symbols-outlined">home</mat-icon>
+      Retour au lobby
+    </button>
+  </div>
+</mat-card>
