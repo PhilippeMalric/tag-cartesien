@@ -175,34 +175,6 @@ export class RoomService {
     await updateDoc(ref, { state, updatedAt: serverTimestamp() });
   }
 
-  async chooseRandomHunter(roomId: string, scope: 'all' | 'ready'):
-    Promise<{ uid: string; displayName?: string } | null> {
-
-    const playersCol = collection(this.fs, `rooms/${roomId}/players`);
-
-    // Filtre selon le scope
-    const q = scope === 'ready'
-      ? query(playersCol, where('ready', '==', true))
-      : query(playersCol);
-
-    const snap = await getDocs(q);
-    const arr = snap.docs.map(d => ({ uid: d.id, ...(d.data() as any) }));
-
-    if (!arr.length) throw new Error('Aucun joueur candidat');
-
-    // Tirage
-    const chosen = arr[Math.floor(Math.random() * arr.length)];
-
-    // Écrit le rôle pour tout le monde : un chasseur, les autres chassés
-    // (tu peux adapter selon ton modèle exact)
-    // ⚠️ pour être atomique, fais-le en batch ou transaction si nécessaire
-    await Promise.all(arr.map(p => {
-      const ref = doc(this.fs, `rooms/${roomId}/players/${p.uid}`);
-      const role = p.uid === chosen.uid ? 'chasseur' : 'chasse';
-      return updateDoc(ref, { role });
-    }));
-
-    return { uid: chosen.uid, displayName: chosen.displayName };
-  }
+ 
 
 }

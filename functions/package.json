@@ -11,13 +11,16 @@
     "lint": "eslint \"src/**/*.ts\"",
     "get:src": "node scripts/concat-files.mjs ./src ./snapshot_app.txt",
     "get:app": "node scripts/concat-files.mjs C:/Users/malri/tag-cartesien/src/app ../snapshot_app.txt",
+    "get:script": "node scripts/concat-files.mjs C:/Users/malri/tag-cartesien/functions/scripts ./snapshot_script.txt",
     
     "seed:classic":     "set GOOGLE_CLOUD_PROJECT=tag-cartesien&& set FIRESTORE_EMULATOR_HOST=127.0.0.1:8080&& tsx ./scripts/seed_classic.ts",
     "seed:transmission":"set GOOGLE_CLOUD_PROJECT=tag-cartesien&& set FIRESTORE_EMULATOR_HOST=127.0.0.1:8080&& tsx ./scripts/seed_transmission.ts",
     "seed:infection":   "set GOOGLE_CLOUD_PROJECT=tag-cartesien&& set FIRESTORE_EMULATOR_HOST=127.0.0.1:8080&& tsx ./scripts/seed_infection.ts",
 
     "tag:classic":      "set GOOGLE_CLOUD_PROJECT=tag-cartesien&& set FIRESTORE_EMULATOR_HOST=127.0.0.1:8080&& tsx ./scripts/tag_classic_demo.ts",
-    "tag:infection":    "set GOOGLE_CLOUD_PROJECT=tag-cartesien&& set FIRESTORE_EMULATOR_HOST=127.0.0.1:8080&& tsx ./scripts/tag_infection_all.ts"
+    "tag:infection":    "set GOOGLE_CLOUD_PROJECT=tag-cartesien&& set FIRESTORE_EMULATOR_HOST=127.0.0.1:8080&& tsx ./scripts/tag_infection_all.ts",
+
+    "listen": "node scripts/room-listener.mjs"
   },
   "engines": {
     "node": "20"

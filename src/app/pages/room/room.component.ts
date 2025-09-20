@@ -201,7 +201,7 @@ private snack = inject(MatSnackBar);
       try {
         // 🔧 Adapte au nom de ta méthode côté service
         // Elle doit renvoyer { uid, displayName? } du joueur choisi
-        const picked = await this.roomSvc.chooseRandomHunter(this.roomId, scope);
+        const picked = await this.chooseRandomHunter(scope);
 
         // Mémorise et notifie
         this.lastPickedHunter = picked || null;
@@ -276,7 +276,7 @@ private snack = inject(MatSnackBar);
 
       if (!pool.length) {
         this.log(`Owner: tirage chasseur impossible (joueurs: ${allPlayers.length}, prêts: ${readyPlayers.length}, pool: ${among})`);
-        return;
+       
       }
 
       const idx = Math.floor(Math.random() * pool.length);
@@ -284,12 +284,17 @@ private snack = inject(MatSnackBar);
 
       const roles: Record<string, 'chasseur' | 'chassé'> = {};
       for (const p of allPlayers) roles[p.uid] = (p.uid === hunterUid ? 'chasseur' : 'chassé');
-
+      console.log("roles",roles);
+      
       await this.roomSvc.applyRoles(this.roomId, roles);
       this.log(`Owner: chasseur tiré au sort → ${hunterUid} (joueurs: ${allPlayers.length}, prêts: ${readyPlayers.length}, pool: ${among})`);
+      
+      const chosen = pool[idx] 
+      return { uid: chosen.uid, displayName: chosen.displayName };
     } catch (e: any) {
       this.log(`Owner: tirage chasseur — ERREUR: ${e?.message || e}`);
     }
+     return null
   }
 
   // NEW — changer le mode (owner)

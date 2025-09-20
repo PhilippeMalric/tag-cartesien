@@ -57,6 +57,8 @@ export function setupPlay(ctx: PlayCtx): () => void {
     });
 
     // Mon doc joueur
+    console.log("matchId",ctx.matchId);
+    
     mySub = ctx.match.myPlayer$(ctx.matchId).subscribe((d) => {
       if (d) {
         ctx.role = (d.role ?? ctx.role ?? null) as any;
@@ -84,7 +86,7 @@ export function setupPlay(ctx: PlayCtx): () => void {
       }
       ctx.cd.markForCheck();
     });
-
+console.log("roomSub",ctx.matchId);
     // Room (rôles + chrono + owner + auto-bots)
     roomSub = ctx.match.room$(ctx.matchId).subscribe((room) => {
       if (!room) return;
@@ -93,6 +95,8 @@ export function setupPlay(ctx: PlayCtx): () => void {
       ctx.targetScore = room.targetScore ?? 0;
 
       const roles = (room.roles ?? null) as Record<string, 'chasseur' | 'chassé'> | null;
+      console.log("roles",roles);
+      
       if (roles) {
         const mine = roles[ctx.uid] ?? null;
         if (mine && ctx.role !== mine) {
@@ -106,6 +110,8 @@ export function setupPlay(ctx: PlayCtx): () => void {
           });
         }
            const chasseurUids = Object.keys(roles).filter((k) => roles[k] === 'chasseur');
+           console.log("chasseurUids",chasseurUids);
+           
            ctx.hunterUid = chasseurUids[0] ?? null; // ← un seul chasseur
            if (chasseurUids.length > 1) {
              console.warn('[setupPlay] Plusieurs "chasseur" détectés:', chasseurUids, '→ on prend le premier.');
