@@ -38,15 +38,9 @@ export class Score implements OnInit {
   fs = inject(Firestore);
 
   matchId = '';
+  top$: any;
 
-  top$ = collectionData(
-    query(
-      collection(this.fs, `rooms/${this.matchId}/players`),
-      orderBy('score', 'desc'),
-      limit(12)
-    ),
-    { idField: 'uid' }
-  ).pipe(map(list => list as PlayerVM[]));
+  
 
   ngOnInit() {
     this.matchId = this.route.snapshot.paramMap.get('matchId') || '';
