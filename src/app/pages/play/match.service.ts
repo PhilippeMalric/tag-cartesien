@@ -3,7 +3,8 @@ import { authState, Auth as FirebaseAuth } from '@angular/fire/auth';
 import { Firestore, doc, docData, collection, collectionData, updateDoc } from '@angular/fire/firestore';
 import { addDoc, getDoc, increment, limit, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import { Observable, firstValueFrom, map, shareReplay } from 'rxjs';
-import { MyPlayerDoc, RoomDoc, TagEvent } from './play.models';
+import { MyPlayerDoc,  TagEvent } from './play.models';
+import { RoomDoc } from '../../models/room.model';
 
 @Injectable({ providedIn: 'root' })
 export class MatchService {

@@ -19,14 +19,7 @@ export type MyPlayerDoc = {
   spawn?: { x: number; y: number }; // ← ajout
 };
 
-export type RoomDoc = {
-  ownerUid?: string | null;
-  targetScore?: number;
-  roundEndAtMs?: number;
-  state?: 'idle' | 'in-progress' | 'ended';
-  currentMatchId?: string | null;
-  roles?: Record<string, 'chasseur' | 'chassé'>;
-};
+
 
 export const GAME_CONSTANTS = {
   TAG_RADIUS: 5,                 // un peu plus large si déplacements par pas

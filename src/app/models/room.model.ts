@@ -1,7 +1,7 @@
 // src/app/models/room.model.ts
 export type GameMode = 'classic' | 'transmission';
 
-export type RoomState = 'idle' | 'running' | 'in-progress' | 'done';
+export type RoomState = 'idle' | 'running' | 'in-progress' | 'ended';
 
 export interface RoomDoc {
   id?: string;
@@ -13,4 +13,8 @@ export interface RoomDoc {
   players?: number;
   createdAt?: any;
   updatedAt?: any;
+  roles:any[];
+  roundEndAtMs?:any
 }
+
+export type Mode = 'classic' | 'infection' | 'transmission';

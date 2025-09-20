@@ -18,7 +18,7 @@ export function setupPlay(ctx: PlayCtx): () => void {
   let timerId: any = null;
   let rafId = 0;
   const handledEventIds = new Set<string>();
-
+ let mode = ""
   const onKeyDown = (e: KeyboardEvent) => ctx.keys.add(e.key.toLowerCase());
   const onKeyUp = (e: KeyboardEvent) => ctx.keys.delete(e.key.toLowerCase());
 
@@ -35,6 +35,11 @@ export function setupPlay(ctx: PlayCtx): () => void {
 
   // --------- BOOTSTRAP APRÈS AUTH ---------
   const bootstrap = () => {
+
+ctx.roomSvc.getMode$(ctx.matchId).subscribe((data:any)=>{
+  mode = data
+})
+
     // Flag : effectuer le spawn initial une seule fois
     let didInitialSpawn = false;
 
@@ -60,6 +65,7 @@ export function setupPlay(ctx: PlayCtx): () => void {
     console.log("matchId",ctx.matchId);
     
     mySub = ctx.match.myPlayer$(ctx.matchId).subscribe((d) => {
+
       if (d) {
         ctx.role = (d.role ?? ctx.role ?? null) as any;
         ;
@@ -94,7 +100,7 @@ console.log("roomSub",ctx.matchId);
       ctx.roomOwnerUid = room.ownerUid ?? null;
       ctx.targetScore = room.targetScore ?? 0;
 
-      const roles = (room.roles ?? null) as Record<string, 'chasseur' | 'chassé'> | null;
+      const roles = (room.roles ?? null) as any;
       console.log("roles",roles);
       
       if (roles) {
@@ -158,7 +164,7 @@ console.log("roomSub",ctx.matchId);
             until: Date.now() + 2500,
           };
 
-          if (ev.victimUid === ctx.uid) {
+          if (ev.victimUid === ctx.uid && mode == "classic") {
             const { x, y } = pickRespawn(ev.x, ev.y);
             ctx.me.x = x;
             ctx.me.y = y;

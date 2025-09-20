@@ -26,7 +26,7 @@ import { Auth as FirebaseAuth, signInAnonymously } from '@angular/fire/auth';
 
 // Modèles & services
 import { Player } from './player.model';
-import { Role, RoomService, RoomDoc } from './room.service';
+import { Role, RoomService } from './room.service';
 
 // UI
 import { MapPickerComponent } from './ui/map-picker.component';
@@ -39,6 +39,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { RoomDoc } from '../../models/room.model';
 
 type HunterScope = 'all' | 'ready';
 

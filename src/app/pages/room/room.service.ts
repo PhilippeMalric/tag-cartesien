@@ -7,22 +7,15 @@ import {
   query,
   where
 } from '@angular/fire/firestore';
-import { Observable, defer } from 'rxjs';
+import { Observable, defer, map } from 'rxjs';
 import { Player } from '../room/player.model'; // Assure-toi que Player { uid: string; ... }
+import { Mode, RoomDoc } from '../../models/room.model';
+
 
 export type RoomState = 'idle' | 'in-progress' | 'running' | 'ended';
 export type Role = 'chasseur' | 'chassé';
 
-export interface RoomDoc {
-  ownerUid?: string;
-  state?: RoomState;
-  targetScore?: number;
-  roundEndAtMs?: number;
-  roles?: Record<string, Role>;
-  timestamps?: any;
-  startedAt?: any;
-  rolesUpdatedAt?: any;
-}
+
 
 @Injectable({ providedIn: 'root' })
 export class RoomService {
@@ -168,6 +161,21 @@ export class RoomService {
   async setMode(roomId: string, mode: 'classic'|'infection'|'transmission') {
     const ref = doc(this.fs, `rooms/${roomId}`);
     await updateDoc(ref, { mode, updatedAt: serverTimestamp() });
+  }
+
+  getMode$(roomId: string): Observable<Mode | undefined> {
+    return defer(() =>
+      runInInjectionContext(this.env, () => {
+        const ref = doc(this.fs, `rooms/${roomId}`);
+        return (docData(ref) as Observable<RoomDoc>).pipe(
+          // si jamais tu veux un défaut:
+          // map(room => room?.mode ?? 'classic')
+        );
+      })
+    ).pipe(
+      // On ne garde que le champ 'mode'
+      map(room => room?.mode)
+    );
   }
 
   async setState(roomId: string, state: 'idle'|'running'|'in-progress'|'ended') {
