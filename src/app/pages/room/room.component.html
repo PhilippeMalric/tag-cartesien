@@ -112,7 +112,7 @@
       <div class="spawn-grid">
         <app-map-picker
           [xy]="spawn.xy()"
-          (xyChange)="spawn.set($event)">
+          (xyChange)="spawn.set($event);onSpawnChange($event)">
         </app-map-picker>
 
         <div class="spawn-form">

@@ -6,7 +6,10 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { AsyncPipe, CommonModule } from '@angular/common';
 import {
   Observable, Subscription, combineLatest, map, of, firstValueFrom,
-  filter, take, shareReplay
+  filter, take, shareReplay,
+  Subject,
+  debounceTime,
+  distinctUntilChanged
 } from 'rxjs';
 
 // Material
@@ -55,6 +58,8 @@ export class RoomComponent implements OnInit, OnDestroy {
 
   /** Service partagé pour le point de départ */
   readonly spawn = inject(SpawnCoordService);
+
+  private saveSpawn$ = new Subject<{x:number;y:number}>();
 
   @Input() roomId = '';
   @Input() isOwner = false; // fallback si fourni par parent
@@ -155,6 +160,32 @@ export class RoomComponent implements OnInit, OnDestroy {
         }
       })
     );
+
+    this.subs.add(
+        this.saveSpawn$
+          .pipe(
+            debounceTime(250),
+            distinctUntilChanged((a, b) => a.x === b.x && a.y === b.y)
+          )
+          .subscribe(async (xy) => {
+            const uid = this.auth.currentUser?.uid; if (!uid) return;
+            try {
+              await this.roomSvc.setMySpawn(this.roomId, uid, xy);
+              this.log(`FS setMySpawn(${xy.x}, ${xy.y})`);
+            } catch (e:any) {
+              this.log(`setMySpawn — ERREUR: ${e?.message || e}`);
+            }
+          })
+      );
+
+  }
+
+
+
+  // méthode appelée par le template
+  onSpawnChange(xy: {x:number;y:number}) {
+    this.spawn.set(xy);           // met à jour le signal local
+    this.saveSpawn$.next(xy);     // déclenche la sauvegarde debounce
   }
 
   ngOnDestroy(): void {

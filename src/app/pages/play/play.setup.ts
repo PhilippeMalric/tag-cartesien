@@ -65,9 +65,12 @@ export function setupPlay(ctx: PlayCtx): () => void {
         // Spawn initial : privilégie le spawn choisi (room) s'il existe
         if (!didInitialSpawn) {
           const sp = (d as any)?.spawn;
+          console.log(sp);
+          
           if (sp && Number.isFinite(sp.x) && Number.isFinite(sp.y)) {
+            console.log("isFinite");
             ctx.me.x = clamp(sp.x, -50, 50);
-            ctx.me.y = clamp(sp.y, -50, 50);
+            ctx.me.y = clamp(-1*sp.y, -50, 50);
           } else {
             const rnd = pickRespawn();
             ctx.me.x = rnd.x;

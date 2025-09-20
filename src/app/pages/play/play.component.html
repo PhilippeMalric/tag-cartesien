@@ -4,7 +4,9 @@
   <button mat-icon-button matTooltip="Basculer clair/sombre" (click)="theme.toggle()">
     <span class="material-symbols-outlined">dark_mode</span>
   </button>
-
+  <button mat-icon-button aria-label="Retour au lobby" (click)="exitToLobby()">
+    <mat-icon>arrow_back</mat-icon>
+  </button>
   <span style="margin-left:8px">Match: <strong>{{ matchId }}</strong></span>
 
   <span class="spacer" style="flex:1 1 auto"></span>

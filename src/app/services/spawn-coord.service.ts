@@ -1,9 +1,12 @@
-﻿import { Injectable, signal } from '@angular/core';
+﻿import { inject, Injectable, signal } from '@angular/core';
+import { RoomService } from '../pages/room';
 
 @Injectable({ providedIn: 'root' })
 export class SpawnCoordService {
   private _x = signal<number>(0);
   private _y = signal<number>(0);
+private readonly roomSvc  = inject(RoomService);
+
 
   xy() { return { x: this._x(), y: this._y() }; }
   set(v: { x: number; y: number }) {

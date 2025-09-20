@@ -128,7 +128,16 @@ roomMode: 'classic'|'transmission' = 'classic';
 this.dispose = setupPlay(this);
   }
 
+  exitToLobby(): void {
+      try {
+        // (optionnel) nettoyages avant de quitter la partie :
+        // this.matchService.leaveCurrentMatch();   // si tu as une méthode maison
+        // this.positionsService.teardown();        // arrêter listeners/loops si besoin
 
+      } finally {
+        this.router.navigateByUrl('/lobby');
+      }
+    }
   
   // Contrôles bots (utilisés par les boutons de la toolbar)
   spawnBots(n = 3) { if (this.isOwnerNow) this.bots.spawn(this.matchId, n); }
