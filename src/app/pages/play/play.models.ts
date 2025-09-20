@@ -30,7 +30,7 @@ export type RoomDoc = {
 
 export const GAME_CONSTANTS = {
   TAG_RADIUS: 5,                 // un peu plus large si déplacements par pas
-  TAG_COOLDOWN_MS: 800,
+  TAG_COOLDOWN_MS: 5000,
   INVULN_MS: 1200,
   RESPAWN_BOUNDS: { minX: -45, maxX: 45, minY: -45, maxY: 45, minDistFromHunter: 12 },
 

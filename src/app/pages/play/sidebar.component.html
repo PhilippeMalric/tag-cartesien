@@ -1,0 +1,8 @@
+<!-- src/app/pages/play/sidebar.component.html -->
+<div class="players" *ngIf="players$ | async as players">
+  <div class="player" *ngFor="let p of players">
+    <span>{{ p.name }}</span>
+    <span class="role" *ngIf="p.role === 'chasseur'">Chasseur</span>
+    <span class="score" *ngIf="room?.mode === 'classic'">{{ p.score || 0 }}</span>
+  </div>
+</div>

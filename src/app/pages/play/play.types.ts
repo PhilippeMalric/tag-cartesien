@@ -10,6 +10,7 @@ import { BotService } from './bot.service';
 import { Pos } from './play.models';
 import { PlayRenderer } from './play.renderer';
 import { SpawnCoordService } from '../../services/spawn-coord.service';
+import { Subscription } from 'rxjs';
 
 export type RecentTag = { label: string; until: number };
 
@@ -56,4 +57,5 @@ export interface PlayCtx {
   desiredBots?: number;
 
   spawnSvc: SpawnCoordService;
+  sub:Subscription
 }

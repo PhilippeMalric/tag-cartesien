@@ -236,11 +236,11 @@ export function setupPlay(ctx: PlayCtx): () => void {
             });
           } else {
             console.log("emitTag");
-            
+            ctx.lastTagMs = performance.now();
             ctx.match
               .emitTag(ctx.matchId, ctx.me.x, ctx.me.y, victim.uid)
               .then(() => {
-                ctx.lastTagMs = performance.now();
+                //ctx.lastTagMs = performance.now();
                 ctx.match.endIfTargetReached(ctx.matchId, projected);
               })
               .catch((e: unknown) => {
@@ -290,6 +290,7 @@ export function setupPlay(ctx: PlayCtx): () => void {
     roomSub?.unsubscribe?.();
     eventsSub?.unsubscribe?.();
     playersSub?.unsubscribe?.();
+    ctx.sub.unsubscribe()
     ctx.positions.stop();
     if (timerId) clearInterval(timerId);
     handledEventIds.clear();

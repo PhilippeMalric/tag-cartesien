@@ -10,6 +10,7 @@
   <span class="spacer" style="flex:1 1 auto"></span>
 
   <mat-chip-set aria-label="Statut de la manche" style="margin-right:8px">
+     <mat-chip>Mode: {{ roomMode }}</mat-chip>  
     <mat-chip [disabled]="!role">Rôle: {{ role || '...' }}</mat-chip>
     <mat-chip>Score: {{ myScore }}<ng-container *ngIf="targetScore"> / {{ targetScore }}</ng-container></mat-chip>
     <mat-chip *ngIf="timeLeft >= 0">Temps: {{ timeLeft }}s</mat-chip>

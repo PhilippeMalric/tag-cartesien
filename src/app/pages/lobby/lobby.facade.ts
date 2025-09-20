@@ -16,6 +16,7 @@ import { Database, ref, set as rtdbSet } from '@angular/fire/database';
 import { DevCleanupService } from '../../services/dev-cleanup.service';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { environment } from '../../../environments/environment';
+import { GameMode } from '../../models/room.model';
 
 @Injectable({ providedIn: 'root' })
 export class LobbyFacade {
@@ -27,6 +28,16 @@ export class LobbyFacade {
   private env = inject(EnvironmentInjector);
   private devCleanup = inject(DevCleanupService);
   private snack = inject(MatSnackBar);
+
+  private _mode = signal<GameMode>('classic');       // 👈 NEW
+  private _targetScore = signal<number>(5);          // 👈 NEW
+
+  // getters/setters (proxies pour le composant)
+  get mode(): GameMode { return this._mode(); }      // 👈 NEW
+  set mode(v: GameMode) { this._mode.set(v ?? 'classic'); }   // 👈 NEW
+
+  get targetScore(): number { return this._targetScore(); }   // 👈 NEW
+  set targetScore(v: number) { this._targetScore.set(+v || 1); } // 👈 NEW
 
   // UI state (signals)
   cleaning = signal(false);
@@ -58,6 +69,7 @@ init(): void {
   runInInjectionContext(this.env, () => {
     const roomsCol = collection(this.db, 'rooms') as CollectionReference<any>;
     const q = query(roomsCol, orderBy('updatedAt', 'desc'), limit(50));
+    // rooms$ mapping → inclure le mode
     this.rooms$ = collectionData(q, { idField: 'id' }).pipe(
       startWith([] as any[]),
       map((rows: any[]) =>
@@ -69,7 +81,8 @@ init(): void {
           timeLimit: r.timeLimit ?? 120,
           state: (r.state ?? 'idle') as RoomVM['state'],
           updatedAt: r.updatedAt ?? r.createdAt,
-          createdAtMs: this.toMillis(r.createdAt ?? r.updatedAt), // ← NEW
+          createdAtMs: this.toMillis(r.createdAt ?? r.updatedAt),
+          mode: (r.mode ?? 'classic') as GameMode,         // 👈 NEW
         }))
       )
     );
@@ -92,6 +105,7 @@ init(): void {
     setTimeout(() => this.loading.set(false), 350);
   }
 
+  // createRoom() → écrire le mode + targetScore si classic
   async createRoom() {
     const uid = this.auth.currentUser?.uid;
     if (!uid) return;
@@ -102,11 +116,12 @@ init(): void {
     const roomId = Math.random().toString(36).slice(2, 8).toUpperCase();
 
     await runInInjectionContext(this.env, async () => {
-      // Firestore: création room
       const refFS = doc(this.db, `rooms/${roomId}`);
+      const isClassic = this.mode === 'classic';
       await setDoc(refFS, {
         ownerUid: uid,
-        targetScore: 5,
+        mode: this.mode,                                    // 👈 NEW
+        targetScore: isClassic ? this.targetScore : null,   // 👈 NEW
         timeLimit: 120,
         state: 'idle',
         players: 1,
@@ -115,7 +130,6 @@ init(): void {
         displayNameOwner: name || null,
       }, { merge: true });
 
-      // RTDB: ownerUid pour règles bots
       try { await rtdbSet(ref(this.rtdb, `roomsMeta/${roomId}/ownerUid`), uid); } catch {}
     });
 

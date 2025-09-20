@@ -4,9 +4,9 @@
   </button>
   <span class="title">Lobby</span>
   <span class="spacer"></span>
+ 
 
-
-</mat-toolbar>
+  </mat-toolbar>
 
 <!-- Barre de statut compacte (mobile) -->
 @if (showDevCleanup && cleaning()) {
@@ -97,87 +97,102 @@
         @let rooms = (rooms$ | async) ?? [];
 
         @if (rooms.length > 0) {
-          <mat-nav-list class="rooms" style="padding-bottom: 20px;">
+          <mat-nav-list class="rooms">
             @for (r of rooms; track r.id) {
-              <mat-list-item class="room-item" (click)="join(r)"
-               aria-label="Rejoindre la room {{ r.id }}">
+              <mat-list-item
+                class="room-item"
+                (click)="join(r)"
+                matRipple
+                aria-label="Rejoindre la room {{ r.id }}"
+              >
+                <!-- Avatar / pictogramme -->
+                <div matListItemIcon class="room-icon">
+                  <div class="room-avatar">
+                    <mat-icon fontSet="material-symbols-outlined">sports_esports</mat-icon>
+                  </div>
+                </div>
 
-              <!-- Titre -->
-              <div matListItemTitle class="room-title">
-                <span class="room-id">#{{ r.id }}</span>
-                <span class="dot">•</span>
+                <!-- Titre & sous-titre -->
+                <div matListItemTitle class="room-title">
+                  <span class="room-id">#{{ r.id }}</span>
+                  <span class="dot">•</span>
 
-                <!-- Joueurs avec badge -->
-                <span class="room-players"
-                      [matBadge]="r.players ?? 0"
-                      matBadgeColor="primary"
-                      matBadgeSize="small"
-                      matBadgeOverlap="false"
-                      matBadgeDescription="Nombre de joueurs">
-                  <mat-icon fontSet="material-symbols-outlined" class="meta-ic">groups</mat-icon>
-                  joueurs
-                </span>
-              </div>
+                  <!-- Joueurs avec badge -->
+                  <span
+                    class="room-players"
+                    [matBadge]="r.players ?? 0"
+                    matBadgeColor="primary"
+                    matBadgeSize="small"
+                    matBadgeOverlap="false"
+                    matBadgeDescription="Nombre de joueurs"
+                  >
+                    <mat-icon fontSet="material-symbols-outlined" class="meta-ic">groups</mat-icon>
+                    joueurs
+                  </span>
 
-              <!-- Métadonnées en Mat Chips -->
-              <div matListItemLine class="room-meta">
-                <mat-chip-set aria-label="Métadonnées de la room" class="meta-chips">
-                  <mat-chip>
-                    <mat-icon fontSet="material-symbols-outlined">sports_score</mat-icon>
-                    <span>Score&nbsp;: {{ r.targetScore }}</span>
+                  <!-- Mode (chip colorée) -->
+                  <mat-chip class="mode-chip" [ngClass]="'mode-' + (r.mode || 'classic')">
+                    <mat-icon fontSet="material-symbols-outlined">tune</mat-icon>
+                    {{ r.mode || 'classic' }}
                   </mat-chip>
+                </div>
 
-                  <mat-chip>
-                    <mat-icon fontSet="material-symbols-outlined">timer</mat-icon>
-                    <span>Limite&nbsp;: {{ r.timeLimit }}s</span>
-                  </mat-chip>
+                <div matListItemLine class="room-meta">
+                  <mat-chip-set aria-label="Métadonnées de la room" class="meta-chips">
+                    <mat-chip>
+                      <mat-icon fontSet="material-symbols-outlined">sports_score</mat-icon>
+                      <span>Score&nbsp;: {{ r.targetScore || '—' }}</span>
+                    </mat-chip>
 
-                <mat-chip
-                  [color]="(r.state === 'running' || r.state === 'in-progress') ? 'primary' : undefined"
-                  [class.chip-active]="(r.state === 'running' || r.state === 'in-progress')"
-                >
-                  <mat-icon fontSet="material-symbols-outlined">flag</mat-icon>
-                  <span>{{ r.state }}</span>
-                </mat-chip>
+                    <mat-chip>
+                      <mat-icon fontSet="material-symbols-outlined">timer</mat-icon>
+                      <span>Limite&nbsp;: {{ r.timeLimit || '—' }}s</span>
+                    </mat-chip>
 
-                  <mat-chip appearance="outlined">
-                    <mat-icon fontSet="material-symbols-outlined">schedule</mat-icon>
-                    <span>Créée {{ r.createdAtMs | relativeTime }}</span>
-                  </mat-chip>
-                </mat-chip-set>
-              </div>
+                    <mat-chip
+                      [color]="(r.state === 'running' || r.state === 'in-progress') ? 'primary' : undefined"
+                      [class.chip-active]="(r.state === 'running' || r.state === 'in-progress')"
+                      class="state-chip"
+                    >
+                      <span class="state-dot" [class.is-on]="(r.state === 'running' || r.state === 'in-progress')"></span>
+                      <span class="state-text">{{ r.state }}</span>
+                    </mat-chip>
 
-              <!-- Actions -->
-              <div matListItemMeta class="actions">
-                <!-- Supprimer -->
-                <button
-                  mat-mini-fab
-                  color="warn"
-                  class="action-btn action-delete"
-                  (click)="$event.stopPropagation(); onDeleteRoom(r.id)"
-                  [disabled]="deletingId() === r.id"
-                  matTooltip="Supprimer la salle"
-                  aria-label="Supprimer {{ r.id }}"
-                >
-                  <mat-icon fontSet="material-symbols-outlined">delete_forever</mat-icon>
-                </button>
+                    <mat-chip appearance="outlined">
+                      <mat-icon fontSet="material-symbols-outlined">schedule</mat-icon>
+                      <span>Créée {{ r.createdAtMs | relativeTime }}</span>
+                    </mat-chip>
+                  </mat-chip-set>
+                </div>
 
-                <!-- Entrer -->
-                <button
-                  mat-mini-fab
-                  color="primary"
-                  class="action-btn action-enter"
-                  (click)="$event.stopPropagation(); join(r)"
-                  matTooltip="Entrer dans la salle"
-                  aria-label="Entrer {{ r.id }}"
-                >
-                  <mat-icon fontSet="material-symbols-outlined">arrow_forward</mat-icon>
-                </button>
-              </div>
-            </mat-list-item>
+                <!-- Actions -->
+                <div matListItemMeta class="actions">
+                  <button
+                    mat-mini-fab
+                    color="warn"
+                    class="action-btn action-delete"
+                    (click)="$event.stopPropagation(); onDeleteRoom(r.id)"
+                    [disabled]="deletingId() === r.id"
+                    matTooltip="Supprimer la salle"
+                    aria-label="Supprimer {{ r.id }}"
+                  >
+                    <mat-icon fontSet="material-symbols-outlined">delete_forever</mat-icon>
+                  </button>
 
-            <mat-divider></mat-divider>
+                  <button
+                    mat-mini-fab
+                    color="primary"
+                    class="action-btn action-enter"
+                    (click)="$event.stopPropagation(); join(r)"
+                    matTooltip="Entrer dans la salle"
+                    aria-label="Entrer {{ r.id }}"
+                  >
+                    <mat-icon fontSet="material-symbols-outlined">arrow_forward</mat-icon>
+                  </button>
+                </div>
+              </mat-list-item>
 
+              <mat-divider inset></mat-divider>
             }
           </mat-nav-list>
         } @else {

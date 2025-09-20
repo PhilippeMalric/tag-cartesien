@@ -29,7 +29,8 @@ import { MatBadgeModule } from '@angular/material/badge';
     FormsModule, AsyncPipe,
     MatToolbarModule, MatCardModule, MatButtonModule, MatIconModule,
     MatListModule, MatProgressBarModule, MatFormFieldModule, MatInputModule,
-    MatTooltipModule, MatDividerModule, RelativeTimePipe,  MatChipsModule, MatBadgeModule, CommonModule
+    MatTooltipModule, MatDividerModule, RelativeTimePipe,  MatChipsModule, MatBadgeModule, CommonModule,
+    MatIconModule 
   ],
   templateUrl: './lobby.component.html',
   styleUrls: ['./lobby.component.scss'],
@@ -53,6 +54,8 @@ export class LobbyComponent implements OnInit {
 
   get joinCode() { return this.facade.joinCode; }
   set joinCode(v: string) { this.facade.joinCode = v; }
+
+
 
   ngOnInit(): void {
     this.facade.init();

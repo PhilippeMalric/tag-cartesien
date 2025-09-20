@@ -89,6 +89,9 @@ export class PlayComponent implements OnInit, OnDestroy {
 
   // Option auto-bots (?bots=N)
   desiredBots = 0;
+  sub: any;
+
+roomMode: 'classic'|'transmission' = 'classic';
 
   // Getters utilisés par le template
   get showRecentTag(): boolean { return !!this.recentTag && this.recentTag.until > Date.now(); }
@@ -114,9 +117,19 @@ export class PlayComponent implements OnInit, OnDestroy {
     this.me = { x: s.x, y: s.y };
 
     // Démarre la logique runtime (auth+bootstrap+loop+subs)
-    this.dispose = setupPlay(this);
+    
+
+    this.sub = this.match.room$(this.matchId).subscribe((room: any) => {
+      if (!room) return;
+      this.roomMode = (room.mode ?? 'classic');
+      this.targetScore = room.targetScore ?? 0;
+      this.cd.markForCheck();
+    });
+this.dispose = setupPlay(this);
   }
 
+
+  
   // Contrôles bots (utilisés par les boutons de la toolbar)
   spawnBots(n = 3) { if (this.isOwnerNow) this.bots.spawn(this.matchId, n); }
   stopBots() { if (this.isOwnerNow) this.bots.stopAll(this.matchId); }

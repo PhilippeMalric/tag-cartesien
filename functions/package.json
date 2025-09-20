@@ -6,10 +6,18 @@
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
     "logs": "firebase functions:log",
-  "deploy": "npm run build && firebase deploy --only functions",
+    "deploy": "npm run build && firebase deploy --only functions",
     "build": "tsc -p tsconfig.json",
-    "lint": "eslint \"src/**/*.ts\""
-  
+    "lint": "eslint \"src/**/*.ts\"",
+    "get:src": "node scripts/concat-files.mjs ./src ./snapshot_app.txt",
+    "get:app": "node scripts/concat-files.mjs C:/Users/malri/tag-cartesien/src/app ../snapshot_app.txt",
+    
+    "seed:classic":     "set GOOGLE_CLOUD_PROJECT=tag-cartesien&& set FIRESTORE_EMULATOR_HOST=127.0.0.1:8080&& tsx ./scripts/seed_classic.ts",
+    "seed:transmission":"set GOOGLE_CLOUD_PROJECT=tag-cartesien&& set FIRESTORE_EMULATOR_HOST=127.0.0.1:8080&& tsx ./scripts/seed_transmission.ts",
+    "seed:infection":   "set GOOGLE_CLOUD_PROJECT=tag-cartesien&& set FIRESTORE_EMULATOR_HOST=127.0.0.1:8080&& tsx ./scripts/seed_infection.ts",
+
+    "tag:classic":      "set GOOGLE_CLOUD_PROJECT=tag-cartesien&& set FIRESTORE_EMULATOR_HOST=127.0.0.1:8080&& tsx ./scripts/tag_classic_demo.ts",
+    "tag:infection":    "set GOOGLE_CLOUD_PROJECT=tag-cartesien&& set FIRESTORE_EMULATOR_HOST=127.0.0.1:8080&& tsx ./scripts/tag_infection_all.ts"
   },
   "engines": {
     "node": "20"
@@ -21,13 +29,16 @@
     "firebase-functions": "^6.0.1"
   },
   "devDependencies": {
+    "@types/node": "^24.5.2",
     "@typescript-eslint/eslint-plugin": "^5.12.0",
     "@typescript-eslint/parser": "^5.12.0",
     "eslint": "^8.9.0",
     "eslint-config-google": "^0.14.0",
     "eslint-plugin-import": "^2.25.4",
     "firebase-functions-test": "^3.1.0",
-    "typescript": "^5.7.3"
+    "ts-node": "^10.9.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
   },
   "private": true
 }
