@@ -4,7 +4,7 @@ import { Observable, map, startWith } from 'rxjs';
 import { RoomVM } from './lobby.types';
 
 // AngularFire
-import { Auth as FirebaseAuth } from '@angular/fire/auth';
+import { Auth as FirebaseAuth, updateProfile } from '@angular/fire/auth';
 import {
   Firestore, CollectionReference,
   collection, collectionData, doc, setDoc, query, orderBy, limit
@@ -29,22 +29,22 @@ export class LobbyFacade {
   private devCleanup = inject(DevCleanupService);
   private snack = inject(MatSnackBar);
 
-  private _mode = signal<GameMode>('classic');       // 👈 NEW
-  private _targetScore = signal<number>(5);          // 👈 NEW
+  private _mode = signal<GameMode>('classic');       // NEW
+  private _targetScore = signal<number>(5);          // NEW
 
-  // getters/setters (proxies pour le composant)
-  get mode(): GameMode { return this._mode(); }      // 👈 NEW
-  set mode(v: GameMode) { this._mode.set(v ?? 'classic'); }   // 👈 NEW
+  // getters/setters (proxies)
+  get mode(): GameMode { return this._mode(); }
+  set mode(v: GameMode) { this._mode.set(v ?? 'classic'); }
 
-  get targetScore(): number { return this._targetScore(); }   // 👈 NEW
-  set targetScore(v: number) { this._targetScore.set(+v || 1); } // 👈 NEW
+  get targetScore(): number { return this._targetScore(); }
+  set targetScore(v: number) { this._targetScore.set(+v || 1); }
 
   // UI state (signals)
   cleaning = signal(false);
   deletingId = signal<string | null>(null);
   loading = signal(false);
 
-  // champs liés au template (via getters/setters dans le composant)
+  // Champs liés au template (via getters/setters du composant)
   private _displayName = signal<string>(localStorage.getItem('displayName') ?? '');
   private _joinCode = signal<string>('');
 
@@ -52,42 +52,39 @@ export class LobbyFacade {
   readonly showDevCleanup = !environment.production;
   readonly TWO_HOURS = 2 * 60 * 60 * 1000;
 
- // helper local
- toMillis(ts: any): number {
-  if (!ts) return Date.now();
-  // Firestore Timestamp
-  if (typeof ts.toMillis === 'function') return ts.toMillis();
-  // { seconds: number }
-  if (typeof ts.seconds === 'number') return ts.seconds * 1000;
-  // Date | number
-  if (ts instanceof Date) return ts.getTime();
-  if (typeof ts === 'number') return ts;
-  return Date.now();
-}
+  // helper local
+  toMillis(ts: any): number {
+    if (!ts) return Date.now();
+    if (typeof ts.toMillis === 'function') return ts.toMillis();           // Firestore Timestamp
+    if (typeof ts.seconds === 'number') return ts.seconds * 1000;          // { seconds: number }
+    if (ts instanceof Date) return ts.getTime();
+    if (typeof ts === 'number') return ts;
+    return Date.now();
+  }
 
-init(): void {
-  runInInjectionContext(this.env, () => {
-    const roomsCol = collection(this.db, 'rooms') as CollectionReference<any>;
-    const q = query(roomsCol, orderBy('updatedAt', 'desc'), limit(50));
-    // rooms$ mapping → inclure le mode
-    this.rooms$ = collectionData(q, { idField: 'id' }).pipe(
-      startWith([] as any[]),
-      map((rows: any[]) =>
-        rows.map(r => ({
-          id: r.id,
-          ownerUid: r.ownerUid,
-          players: r.players ?? 0,
-          targetScore: r.targetScore ?? 5,
-          timeLimit: r.timeLimit ?? 120,
-          state: (r.state ?? 'idle') as RoomVM['state'],
-          updatedAt: r.updatedAt ?? r.createdAt,
-          createdAtMs: this.toMillis(r.createdAt ?? r.updatedAt),
-          mode: (r.mode ?? 'classic') as GameMode,         // 👈 NEW
-        }))
-      )
-    );
-  });
-}
+  init(): void {
+    runInInjectionContext(this.env, () => {
+      const roomsCol = collection(this.db, 'rooms') as CollectionReference<any>;
+      const q = query(roomsCol, orderBy('updatedAt', 'desc'), limit(50));
+      // rooms$ mapping → inclure le mode
+      this.rooms$ = collectionData(q, { idField: 'id' }).pipe(
+        startWith([] as any[]),
+        map((rows: any[]) =>
+          rows.map(r => ({
+            id: r.id,
+            ownerUid: r.ownerUid,
+            players: r.players ?? 0,
+            targetScore: r.targetScore ?? 5,
+            timeLimit: r.timeLimit ?? 120,
+            state: (r.state ?? 'idle') as RoomVM['state'],
+            updatedAt: r.updatedAt ?? r.createdAt,
+            createdAtMs: this.toMillis(r.createdAt ?? r.updatedAt),
+            mode: (r.mode ?? 'classic') as GameMode,
+          }))
+        )
+      );
+    });
+  }
 
   // Proxies pour [(ngModel)]
   get displayName(): string { return this._displayName(); }
@@ -105,7 +102,38 @@ init(): void {
     setTimeout(() => this.loading.set(false), 350);
   }
 
-  // createRoom() → écrire le mode + targetScore si classic
+  // Sauvegarde centralisée du displayName (Auth + users/{uid} + localStorage)
+  async saveDisplayName(name: string) {
+    const user = this.auth.currentUser;
+    const safe = (name || '').trim().slice(0, 24);
+
+    localStorage.setItem('displayName', safe);
+    this._displayName.set(safe);
+
+    if (!user) {
+      this.snack.open('Nom mis à jour localement (non connecté)', 'OK', { duration: 2000 });
+      return;
+    }
+
+    try {
+      // Profil Firebase Auth
+      await updateProfile(user, { displayName: safe });
+
+      // Doc user (utile pour d’autres UIs)
+      await setDoc(
+        doc(this.db, `users/${user.uid}`),
+        { displayName: safe, updatedAt: new Date().toISOString() },
+        { merge: true }
+      );
+
+      this.snack.open('Nom mis à jour', 'OK', { duration: 2000 });
+    } catch (e: any) {
+      console.error('[saveDisplayName]', e);
+      this.snack.open(`Erreur lors de la mise à jour du nom`, 'OK', { duration: 3000 });
+    }
+  }
+
+  // createRoom() → écrit le mode + targetScore si classic
   async createRoom() {
     const uid = this.auth.currentUser?.uid;
     if (!uid) return;
@@ -120,8 +148,8 @@ init(): void {
       const isClassic = this.mode === 'classic';
       await setDoc(refFS, {
         ownerUid: uid,
-        mode: this.mode,                                    // 👈 NEW
-        targetScore: isClassic ? this.targetScore : null,   // 👈 NEW
+        mode: this.mode,
+        targetScore: isClassic ? this.targetScore : null,
         timeLimit: 120,
         state: 'idle',
         players: 1,
@@ -147,8 +175,6 @@ init(): void {
   }
 
   async cleanLobby() {
-    //console.log("cleanLobby");
-    
     this.cleaning.set(true);
     try {
       await Promise.allSettled([

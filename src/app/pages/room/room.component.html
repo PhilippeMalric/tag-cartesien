@@ -1,62 +1,90 @@
-<mat-toolbar color="primary">
+<!-- Rangée 2 (dans ta toolbar) -->
+<div class="row row-actions">
   <button mat-icon-button (click)="goLobby()" aria-label="Retour au lobby" matTooltip="Retour au lobby">
     <mat-icon fontSet="material-symbols-outlined">arrow_back</mat-icon>
   </button>
-
-  <span class="ml-2">Room {{ roomId }}</span>
-  <span class="spacer"></span>
-
   @if (isOwner$ | async) {
-    <button
-      mat-stroked-button
-      color="accent"
-      class="mr-2"
-      (click)="chooseRandomHunter('all')"
-      matTooltip="Tirer un chasseur (parmi tous les joueurs)"
-    >
-      <mat-icon fontSet="material-symbols-outlined" class="mr-1">shuffle</mat-icon>
-      Tirer chasseur
-    </button>
 
-    <button
-      mat-button
-      class="mr-2"
-      (click)="chooseRandomHunter('ready')"
-      matTooltip="Tirer un chasseur (parmi les joueurs prêts)"
-    >
-      Prêts seulement
-    </button>
+    <!-- Choix du mode -->
+    <div class="mode-group">
+      <span class="mode-label">Mode</span>
+      <mat-select
+        [value]="mode"
+        (valueChange)="setMode($event)"
+        aria-label="Choisir le mode">
+        <mat-option value="classic">classic</mat-option>
+        <mat-option value="infection">infection</mat-option>
+        <mat-option value="transmission">transmission</mat-option>
+      </mat-select>
+    </div>
+
+    <!-- Tirage chasseur -->
+    <div class="owner-actions">
+      <button
+        mat-stroked-button
+        color="accent"
+        class="btn-pick"
+        [disabled]="pickingHunter"
+        [matMenuTriggerFor]="pickMenu"
+        aria-label="Choisir le chasseur">
+        <mat-icon fontSet="material-symbols-outlined">shuffle</mat-icon>
+        <span>Tirer le chasseur</span>
+        @if (pickingHunter) { <mat-progress-spinner mode="indeterminate" diameter="16"></mat-progress-spinner> }
+      </button>
+
+      <!-- Résultat visible -->
+      @if (lastPickedHunter) {
+        <span class="chip result-chip" aria-live="polite">
+          Chasseur : {{ lastPickedHunter.displayName || lastPickedHunter.uid }}
+        </span>
+      }
+
+      <!-- Terminer -->
+      <button
+        mat-stroked-button
+        color="warn"
+        (click)="endNow()">
+        <mat-icon fontSet="material-symbols-outlined">flag</mat-icon>
+        Terminer
+      </button>
+    </div>
+
+    <!-- Menu pour choisir l’ensemble des candidats -->
+    <mat-menu #pickMenu="matMenu" xPosition="before">
+      <button mat-menu-item (click)="pickHunter('all')">
+        <mat-icon fontSet="material-symbols-outlined">group</mat-icon>
+        <span>Parmi tous les joueurs</span>
+      </button>
+      <button mat-menu-item (click)="pickHunter('ready')">
+        <mat-icon fontSet="material-symbols-outlined">how_to_reg</mat-icon>
+        <span>Parmi les joueurs prêts</span>
+      </button>
+    </mat-menu>
+    @if (canStart$ | async) {
+      <button
+        mat-raised-button
+        color="warn"
+        class="btn-start"
+        (click)="start()"
+        matTooltip="Démarrer la partie">
+        <mat-icon fontSet="material-symbols-outlined" class="mr-1">play_arrow</mat-icon>
+        Démarrer
+      </button>
+    }
   }
- 
-@if (isOwner$ | async) {
-  <div class="ml-2" style="display:flex;align-items:center;gap:.5rem">
-    <span>Mode:</span>
-    <select [value]="mode" (change)="setMode(($any($event.target).value))" aria-label="Choisir le mode">
-      <option value="classic">classic</option>
-      <option value="infection">infection</option>
-      <option value="transmission">transmission</option>
-    </select>
-  </div>
-}
-@if (isOwner$ | async) {
+</div>
+
+@if ((isOwner$ | async) && (canStart$ | async)) {
   <button
-    mat-stroked-button
+    class="start-fab"
+    mat-fab
     color="warn"
-    class="ml-2"
-    (click)="endNow()"
-    matTooltip="Terminer la manche">
-    Terminer
+    (click)="start()"
+    aria-label="Démarrer">
+    <mat-icon fontSet="material-symbols-outlined">play_arrow</mat-icon>
   </button>
 }
 
-
-  @if (canStart$ | async) {
-    <button mat-raised-button color="warn" (click)="start()" matTooltip="Démarrer la partie">
-      <mat-icon fontSet="material-symbols-outlined" class="mr-1">play_arrow</mat-icon>
-      Démarrer
-    </button>
-  }
-</mat-toolbar>
 
 
 
@@ -75,10 +103,17 @@
             <div matListItemTitle class="player-line">
               <span class="name">{{ p.displayName }}</span>
 
+             <!-- Badge de rôle, compact et explicite -->
               @if (p.roleResolved === 'chasseur') {
-                <span class="role-badge hunter" title="Rôle">Chasseur</span>
+                <span class="role-chip role-chip--hunter" matTooltip="Rôle du joueur">
+                  <mat-icon fontSet="material-symbols-outlined" class="chip-ic">target</mat-icon>
+                  Chasseur
+                </span>
               } @else {
-                <span class="role-badge" title="Rôle">Chassé</span>
+                <span class="role-chip role-chip--runner" matTooltip="Rôle du joueur">
+                  <mat-icon fontSet="material-symbols-outlined" class="chip-ic">directions_run</mat-icon>
+                  Chassé
+                </span>
               }
 
               @if (p.ready) {

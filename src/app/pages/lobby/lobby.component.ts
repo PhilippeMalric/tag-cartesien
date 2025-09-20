@@ -1,5 +1,5 @@
-import { Component, OnInit, inject } from '@angular/core';
-import { FormsModule } from '@angular/forms';
+import { Component, OnInit, inject, ViewChild, ElementRef } from '@angular/core';
+import { FormsModule, ReactiveFormsModule, FormControl, Validators } from '@angular/forms';
 import { AsyncPipe, CommonModule } from '@angular/common';
 import { Observable } from 'rxjs';
 
@@ -18,19 +18,21 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDividerModule } from '@angular/material/divider';
-import { RelativeTimePipe } from '../../shared/pipes/relative-time.pipe';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatBadgeModule } from '@angular/material/badge';
+import { MatSnackBarModule } from '@angular/material/snack-bar';
+
+import { RelativeTimePipe } from '../../shared/pipes/relative-time.pipe';
 
 @Component({
   selector: 'app-lobby',
   standalone: true,
   imports: [
-    FormsModule, AsyncPipe,
+    CommonModule, FormsModule, ReactiveFormsModule, AsyncPipe,
     MatToolbarModule, MatCardModule, MatButtonModule, MatIconModule,
     MatListModule, MatProgressBarModule, MatFormFieldModule, MatInputModule,
-    MatTooltipModule, MatDividerModule, RelativeTimePipe,  MatChipsModule, MatBadgeModule, CommonModule,
-    MatIconModule 
+    MatTooltipModule, MatDividerModule, RelativeTimePipe, MatChipsModule, MatBadgeModule,
+    MatSnackBarModule,
   ],
   templateUrl: './lobby.component.html',
   styleUrls: ['./lobby.component.scss'],
@@ -39,37 +41,58 @@ export class LobbyComponent implements OnInit {
   readonly theme = inject(ThemeService);
   private facade = inject(LobbyFacade);
 
-  // ⚠️ On expose la même API que l’ancien composant pour ne pas toucher au HTML
-
-  // flags/options
+  // === API exposée au template (conservation de ton contrat) ===
   get showDevCleanup() { return this.facade.showDevCleanup; }
   cleaning = () => this.facade.cleaning();
   deletingId = () => this.facade.deletingId();
   get loading() { return this.facade.loading(); }
   get rooms$(): Observable<RoomVM[]> { return this.facade.rooms$; }
 
-  // champs liés au template ([(ngModel)])
+  // Champs liés au template ([(ngModel)])
   get displayName() { return this.facade.displayName; }
   set displayName(v: string) { this.facade.displayName = v; }
 
   get joinCode() { return this.facade.joinCode; }
   set joinCode(v: string) { this.facade.joinCode = v; }
 
-
+  // === Édition inline du nom ===
+  editingName = false;
+  nameCtrl = new FormControl<string>('', {
+    nonNullable: true,
+    validators: [Validators.required, Validators.maxLength(24)],
+  });
+  @ViewChild('nameInput') nameInput?: ElementRef<HTMLInputElement>;
 
   ngOnInit(): void {
     this.facade.init();
+    // Initialise le champ avec la valeur actuelle de la façade
+    this.nameCtrl.setValue(this.displayName ?? '');
   }
 
-  // méthodes appelées par le template
+  // Méthodes appelées par le template existant
   refresh() { this.facade.refresh(); }
   createRoom() { this.facade.createRoom(); }
   onJoinCodeInput(v: string) { this.facade.onJoinCodeInput(v); }
   quickJoin() { this.facade.quickJoin(); }
   join(r: RoomVM) { this.facade.join(r); }
-  cleanLobby() { 
-   // console.log("cleanLobby!");
-    
-    this.facade.cleanLobby(); }
+  cleanLobby() { this.facade.cleanLobby(); }
   onDeleteRoom(roomId: string) { this.facade.deleteRoom(roomId); }
+
+  // === Contrôles édition du nom ===
+  startEditName() {
+    this.editingName = true;
+    queueMicrotask(() => this.nameInput?.nativeElement?.focus());
+  }
+
+  async commitName() {
+    if (this.nameCtrl.invalid) { this.editingName = false; return; }
+    const name = this.nameCtrl.value.trim();
+    if (name === (this.displayName ?? '')) { this.editingName = false; return; }
+
+    // Mets à jour la façade (setter existant) puis sauvegarde distante
+    this.displayName = name;
+    await this.facade.saveDisplayName(name);
+
+    this.editingName = false;
+  }
 }

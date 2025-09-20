@@ -34,6 +34,14 @@ import { MapPickerComponent } from './ui/map-picker.component';
 // Spawn (signals partagés)
 import { SpawnCoordService } from '../../services/spawn-coord.service';
 
+import { MatMenuModule } from '@angular/material/menu';
+import { MatSelectModule } from '@angular/material/select';
+import { MatDividerModule } from '@angular/material/divider';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+
+type HunterScope = 'all' | 'ready';
+
 type PlayerVM = Player & { roleResolved: Role | null };
 
 @Component({
@@ -44,7 +52,9 @@ type PlayerVM = Player & { roleResolved: Role | null };
     AsyncPipe,
     MatToolbarModule, MatButtonModule, MatIconModule,
     MatCardModule, MatListModule, MatProgressBarModule, MatTooltipModule,
-    MapPickerComponent, CommonModule
+    MapPickerComponent, CommonModule,MatMenuModule,MatSelectModule,MatDividerModule,
+    MatProgressSpinnerModule 
+    
   ],
   templateUrl: './room.component.html',
   styleUrls: ['./room.component.scss'],
@@ -55,7 +65,7 @@ export class RoomComponent implements OnInit, OnDestroy {
   private readonly env      = inject(EnvironmentInjector);
   protected readonly auth   = inject(FirebaseAuth);
   private readonly roomSvc  = inject(RoomService);
-
+private snack = inject(MatSnackBar);
   /** Service partagé pour le point de départ */
   readonly spawn = inject(SpawnCoordService);
 
@@ -87,6 +97,10 @@ export class RoomComponent implements OnInit, OnDestroy {
     const t = new Date().toLocaleTimeString();
     this.writes = [`[${t}] ${msg}`, ...this.writes].slice(0, 30);
   }
+
+  pickingHunter = false;
+  lastPickedHunter: { uid: string; displayName?: string } | null = null;
+
 
   ngOnInit(): void {
     if (!this.roomId) this.roomId = this.route.snapshot.paramMap.get('id') ?? '';
@@ -180,7 +194,29 @@ export class RoomComponent implements OnInit, OnDestroy {
 
   }
 
+  // Appel quand l’owner clique sur un item du menu
+    async pickHunter(scope: HunterScope): Promise<void> {
+      if (this.pickingHunter) return;
+      this.pickingHunter = true;
+      try {
+        // 🔧 Adapte au nom de ta méthode côté service
+        // Elle doit renvoyer { uid, displayName? } du joueur choisi
+        const picked = await this.roomSvc.chooseRandomHunter(this.roomId, scope);
 
+        // Mémorise et notifie
+        this.lastPickedHunter = picked || null;
+
+        const name = picked?.displayName || picked?.uid || 'inconnu';
+        this.snack.open(`Chasseur choisi : ${name}`, 'OK', { duration: 2500 });
+
+      } catch (e: any) {
+        console.error('[pickHunter] ERREUR', e);
+        this.snack.open(`Impossible de choisir le chasseur : ${e?.message || e}`, 'OK', { duration: 3500 });
+      } finally {
+        this.pickingHunter = false;
+      }
+    }
+  
 
   // méthode appelée par le template
   onSpawnChange(xy: {x:number;y:number}) {

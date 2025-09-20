@@ -1,64 +1,204 @@
-.page { max-width: 900px; margin: 16px auto; display: grid; gap: 16px; padding: 0 12px; }
-.card { border-radius: 12px; }
-.actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-.code { opacity: .7; }
-.owner-badge { opacity: .8; margin-right: 8px; }
-.spacer { flex: 1 1 auto; }
-.ml4 { margin-left: 4px; }
-.muted { opacity: .7; }
+/* ===== Toolbar Room – Responsive (dark) ===== */
+.room-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  padding: 6px 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.35);
+  backdrop-filter: saturate(120%) blur(4px);
+  min-height: 56px;
+}
 
-/* Rôle chasseur mis en évidence */
-.hunter mat-icon[matListItemIcon] { color: var(--mat-sys-primary); }
-.hunter-chip {
-  background: color-mix(in srgb, var(--mat-sys-primary) 18%, transparent);
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.row-top .title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.title-line {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+
+.subtitle {
+  font-size: .8rem;
+  opacity: .7;
+  line-height: 1.2;
+}
+
+.owner-chip {
+  padding: .1rem .5rem;
+  border-radius: 9999px;
+  font-size: .7rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--mat-sys-primary) 25%, transparent);
   color: var(--mat-sys-primary);
 }
-.runner-chip {
-  background: color-mix(in srgb, var(--mat-sys-secondary) 14%, transparent);
-  color: var(--mat-sys-secondary);
+
+.spacer { flex: 1 1 auto; }
+
+.btn-start {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  min-height: 36px;
 }
 
-.chip {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
+.btn-start .mat-icon {
+  font-size: 20px;
+  line-height: 20px;
+}
+
+.btn-label { display: none; } /* s’affiche dès 480px */
+
+.only-xs { display: inline-flex; }
+
+/* ===== Rangée 2 : actions Owner aérées ===== */
+.row-actions {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.mode-group {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: 4px 0;
+}
+
+.mode-label {
+  opacity: .85;
+  font-size: .9rem;
+}
+
+.mode-group .mat-mdc-select {
+  min-width: 160px;
+}
+
+/* Boutons owner : touch-friendly */
+.owner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.owner-actions button {
+  min-height: 36px;
+}
+
+/* ===== Breakpoints ===== */
+@media (min-width: 480px) {
+  .btn-label { display: inline; }
+}
+
+/* --- FIX: laisser la rangée 2 visible même en desktop --- */
+@media (min-width: 640px) {
+  .row-actions {
+    display: flex;         /* visible */
+    margin-top: 0;         /* on compresse verticalement en desktop */
+    padding-top: 0;
+    border-top: none;
+    gap: 8px 12px;
+  }
+}
+
+/* ===== Petites utilitaires (si non déjà présentes) ===== */
+.mr-1 { margin-right: .25rem; }
+.mr-2 { margin-right: .5rem; }
+.ml-2 { margin-left: .5rem; }
+
+/* Badge générique */
+.role-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .15rem .55rem;
+  border-radius: 9999px;
+  font-size: .8rem;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: .2px;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Icône compacte et alignée */
+.role-chip .chip-ic {
+  font-size: 18px;
+  width: 18px; height: 18px;
   line-height: 18px;
 }
 
-/* Mobile */
-@media (max-width: 640px) {
-  .actions { justify-content: stretch; }
-  .actions button { width: 100%; }
+/* Variantes (dark friendly) */
+.role-chip--hunter {
+  background: color-mix(in srgb, var(--mat-sys-primary, #7aa2ff) 20%, transparent);
+  color: var(--mat-sys-primary, #7aa2ff);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mat-sys-primary, #7aa2ff) 55%, transparent);
 }
 
-.role-badge {
-  padding: .1rem .4rem;
-  border-radius: 9999px;
-  font-size: .75rem;
-  background: var(--mat-sys-surface-variant, #1a1919);
-}
-.role-badge.hunter {
-  background: var(--mat-sys-primary, #3f51b5);
-  color: var(--mat-sys-on-primary, #fff);
-  font-weight: 600;
+.role-chip--runner {
+  background: color-mix(in srgb, var(--mat-sys-secondary, #a1e3b4) 16%, transparent);
+  color: var(--mat-sys-secondary, #a1e3b4);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mat-sys-secondary, #a1e3b4) 45%, transparent);
 }
 
-.spacer { flex: 1 1 auto; }
-  .ml-1 { margin-left: .25rem; }
-  .ml-2 { margin-left: .5rem; }
-  .mr-1 { margin-right: .25rem; }
-  .mr-2 { margin-right: .5rem; }
-  .mt-3 { margin-top: 1rem; }
-  .p-3 { padding: 1rem; }
+/* Petit “pulse” discret sur le chasseur (optionnel) */
+.role-chip--hunter {
+  animation: hunterPulse 2.4s ease-in-out infinite;
+}
+@keyframes hunterPulse {
+  0%, 100% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mat-sys-primary, #7aa2ff) 55%, transparent); }
+  50% { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--mat-sys-primary, #7aa2ff) 70%, transparent); }
+}
 
+/* Sur écrans étroits, texte légèrement plus petit */
+@media (max-width: 420px) {
+  .role-chip { font-size: .75rem; }
+}
 
-  .player-line {
-    display: flex;
-    align-items: center;
-    gap: .25rem;
-  }
-  .name {
-    font-weight: 600;
-  }
+.fab-lobby {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+}
+@media (min-width: 900px) {
+  /* sur grand écran, on peut cacher ou déplacer le FAB */
+  .fab-lobby { right: 24px; bottom: 24px; }
+}
+/* bouton dans la toolbar */
+.btn-start {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  min-height: 36px;
+}
+
+/* FAB mobile en bas à droite */
+.start-fab {
+  position: fixed;
+  right: 16px;
+  bottom: 84px;       /* au-dessus de ton autre FAB si tu en as un, sinon mets 16px */
+  z-index: 30;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+}
+
+/* si tu avais caché .row-actions sur desktop, on s’assure qu’elle reste visible */
+@media (min-width: 640px) {
+  .row-actions { display: flex; gap: 8px 12px; }
+}

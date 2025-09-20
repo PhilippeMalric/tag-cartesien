@@ -1,4 +1,58 @@
-/* Liste */
+/* --- Toolbar --- */
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0,0,0,.28);
+  min-height: 56px;
+}
+.title { margin-left: .5rem; font-weight: 700; letter-spacing: .2px; }
+.spacer { flex: 1 1 auto; }
+
+/* --- Page wrapper --- */
+.page {
+  max-width: 960px;
+  margin: 12px auto 96px;
+  padding: 0 12px;
+  display: grid;
+  gap: 16px;
+}
+
+/* --- Édition du nom --- */
+.name-edit {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .75rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--mat-sys-surface, #121212) 80%, transparent);
+}
+.name-edit .display-name {
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+.name-field { width: 240px; max-width: 75vw; }
+
+/* --- Cartes --- */
+.card { border-radius: 14px; }
+.card .h6 { font-weight: 700; letter-spacing: .2px; }
+
+/* --- Grilles boutons/champs --- */
+.card-grid,
+.join-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+.fx1 { min-width: 220px; }
+.btn-primary, .btn-secondary { display: inline-flex; align-items: center; gap: .5rem; }
+.btn-text { display: none; }
+@media (min-width: 420px) {
+  .btn-text { display: inline; }
+}
+
+/* --- Liste des rooms --- */
 .rooms { padding-block: 0; }
 
 /* Item : carte douce + hover subtil */
@@ -98,9 +152,21 @@
   .action-btn mat-icon { font-size: 21px; }
 }
 
-/* Accessibilité */
+/* Accessibilité / motion */
 @media (prefers-reduced-motion: reduce) { .room-item { transition: none; } }
 .chip-active {
   font-weight: 600;
   box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 35%, transparent) inset;
+}
+
+/* --- FAB primaire (mobile) --- */
+.fab {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+}
+@media (min-width: 900px) {
+  .fab { right: 24px; bottom: 24px; }
 }
