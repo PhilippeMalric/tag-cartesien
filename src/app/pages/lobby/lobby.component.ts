@@ -21,7 +21,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatSnackBarModule } from '@angular/material/snack-bar';
-
+import { MatRippleModule } from '@angular/material/core';
 import { RelativeTimePipe } from '../../shared/pipes/relative-time.pipe';
 
 @Component({
@@ -32,14 +32,14 @@ import { RelativeTimePipe } from '../../shared/pipes/relative-time.pipe';
     MatToolbarModule, MatCardModule, MatButtonModule, MatIconModule,
     MatListModule, MatProgressBarModule, MatFormFieldModule, MatInputModule,
     MatTooltipModule, MatDividerModule, RelativeTimePipe, MatChipsModule, MatBadgeModule,
-    MatSnackBarModule,
+    MatSnackBarModule,MatRippleModule
   ],
   templateUrl: './lobby.component.html',
   styleUrls: ['./lobby.component.scss'],
 })
 export class LobbyComponent implements OnInit {
   readonly theme = inject(ThemeService);
-  private facade = inject(LobbyFacade);
+   facade = inject(LobbyFacade);
 
   // === API exposée au template (conservation de ton contrat) ===
   get showDevCleanup() { return this.facade.showDevCleanup; }

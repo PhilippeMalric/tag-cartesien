@@ -1,5 +1,5 @@
 // src/app/models/room.model.ts
-export type GameMode = 'classic' | 'transmission';
+export type GameMode = 'classic' | 'transmission' | 'infection';
 
 export type RoomState = 'idle' | 'running' | 'in-progress' | 'ended';
 

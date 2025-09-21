@@ -170,3 +170,32 @@
 @media (min-width: 900px) {
   .fab { right: 24px; bottom: 24px; }
 }
+.mode-picker { margin: 8px 0 4px; }
+.mode-picker .mat-mdc-chip { text-transform: capitalize; font-weight: 600; }
+.spacer { flex: 1 1 auto; }
+.lobby-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  padding: 16px;
+}
+@media (min-width: 900px) {
+  .lobby-grid {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+.row { display: flex; gap: 12px; align-items: center; }
+.fx1 { flex: 1; }
+.mode-picker { margin: 8px 0; }
+.rooms .room-item { cursor: pointer; }
+.dot { opacity: .5; margin: 0 6px; }
+.chip { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: capitalize; }
+.chip.idle { background: var(--md-sys-color-surface-variant); }
+.chip.running { background: var(--md-sys-color-tertiary-container); }
+.chip.done { background: var(--md-sys-color-secondary-container); }
+.actions { display:flex; align-items:center; gap:6px; }
+.empty { text-align:center; padding:24px 0; }
+.name-edit { display:flex; align-items:center; gap:8px; }
+.name-edit .display-name { font-weight:600; }
+.name-edit .name-field { flex:1; min-width:220px; }

@@ -8,7 +8,7 @@ export type RoomVM = {
   players?: number;
   targetScore: number;
   timeLimit: number;
-  state: 'idle' | 'running' | 'in-progress' | 'done';
+  state: 'idle' | 'running' | 'in-progress' | 'ended';
   updatedAt?: any;
   mode: GameMode; 
   createdAtMs: number;   // ← ajout: timestamp ms de création

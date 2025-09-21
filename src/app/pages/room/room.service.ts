@@ -51,9 +51,14 @@ export class RoomService {
   }
 
   /** Crée/merge mon doc joueur — n'écrit PAS `uid` (interdit par règles) */
-  async ensureSelfPlayerDoc(roomId: string, uid: string, displayName: string) {
+   async ensureSelfPlayerDoc(roomId: string, uid: string, displayName?: string) {
     return runInInjectionContext(this.env, async () => {
-      await setDoc(this.playerRef(roomId, uid), { displayName }, { merge: true });
+      const patch: any = {};
+      if (displayName && displayName.trim()) patch.displayName = displayName.trim();
+      // si pas de nom => n'écrit rien (on n’écrase pas l’existant)
+      if (Object.keys(patch).length) {
+        await setDoc(this.playerRef(roomId, uid), patch, { merge: true });
+      }
     });
   }
 
@@ -183,6 +188,6 @@ export class RoomService {
     await updateDoc(ref, { state, updatedAt: serverTimestamp() });
   }
 
- 
+
 
 }

@@ -1,248 +1,206 @@
-<mat-toolbar color="primary" class="toolbar">
-  <button mat-icon-button aria-label="Thème" (click)="theme.toggle()">
-    <mat-icon fontSet="material-symbols-outlined">dark_mode</mat-icon>
-  </button>
-  <span class="title">Lobby</span>
+<!-- Toolbar -->
+<mat-toolbar color="primary">
+  <span>Lobby</span>
   <span class="spacer"></span>
- 
+  <button mat-icon-button matTooltip="Rafraîchir" (click)="refresh()">
+    <mat-icon fontSet="material-symbols-outlined">refresh</mat-icon>
+  </button>
+  @if (showDevCleanup) {
+    <button mat-stroked-button color="warn" (click)="cleanLobby()" [disabled]="cleaning()">
+      @if (cleaning()) { Nettoyage… } @else { Nettoyer anciens lobbys }
+    </button>
+  }
+</mat-toolbar>
 
-  </mat-toolbar>
-
-<!-- Barre de statut compacte (mobile) -->
-@if (showDevCleanup && cleaning()) {
-  <mat-progress-bar mode="indeterminate"></mat-progress-bar>
-}
-
-<div class="page">
-
-  <div class="name-edit">
-    <mat-icon fontSet="material-symbols-outlined">person</mat-icon>
-
-    @if (!editingName) {
-      <span class="display-name">{{ displayName || 'Sans nom' }}</span>
-      <button mat-icon-button (click)="startEditName()" aria-label="Modifier le nom">
-        <mat-icon fontSet="material-symbols-outlined">edit</mat-icon>
-      </button>
-    } @else {
-      <mat-form-field appearance="outline" class="name-field">
-        <input
-          matInput
-          #nameInput
-          placeholder="Ton nom"
-          [formControl]="nameCtrl"
-          maxlength="24"
-          (keydown.enter)="commitName()"
-          (blur)="commitName()" />
-        <button mat-icon-button matSuffix (click)="commitName()" [disabled]="nameCtrl.invalid" aria-label="Enregistrer">
-          <mat-icon fontSet="material-symbols-outlined">check</mat-icon>
-        </button>
-      </mat-form-field>
-    }
-  </div>
-
-  <!-- Créer une salle -->
-  <mat-card class="card">
+<div class="lobby-grid">
+  <!-- Carte Profil (nom d'affichage indépendant) -->
+  <mat-card class="profile-card">
     <mat-card-header>
-      <mat-card-title class="h6">Créer une salle</mat-card-title>
-      <mat-card-subtitle style="padding: 20px 0px;">Choisis un nom d’affichage</mat-card-subtitle>
+      <mat-card-title>Profil</mat-card-title>
+      <mat-card-subtitle>Nom d’affichage (optionnel)</mat-card-subtitle>
     </mat-card-header>
 
-    <mat-card-content class="card-grid" >
-      <mat-form-field appearance="outline" class="fx1">
-        <mat-label>Nom d’affichage</mat-label>
-        <input
-          matInput
-          [(ngModel)]="displayName"
-          placeholder="Ex.: Philippe"
-          inputmode="text"
-          autocomplete="name"
-          (keyup.enter)="createRoom()"
-          aria-label="Nom d’affichage"
-        />
-      </mat-form-field>
+    <mat-card-content>
+      <div class="name-edit">
+        <mat-icon fontSet="material-symbols-outlined">person</mat-icon>
 
-      <button
-        mat-raised-button
-        color="primary"
-        class="btn-primary"
-        (click)="createRoom()"
-        [disabled]="!(displayName && displayName.trim())"
-        aria-label="Créer une salle"
-      >
-        <mat-icon fontSet="material-symbols-outlined">add</mat-icon>
-        <span class="btn-text">Créer</span>
-      </button>
+        @if (!editingName) {
+          <span class="display-name">{{ displayName || 'Sans nom' }}</span>
+          <button mat-icon-button (click)="startEditName()" aria-label="Modifier le nom">
+            <mat-icon fontSet="material-symbols-outlined">edit</mat-icon>
+          </button>
+        } @else {
+          <mat-form-field appearance="outline" class="name-field">
+            <input
+              matInput
+              #nameInput
+              placeholder="Ton nom"
+              [formControl]="nameCtrl"
+              maxlength="24"
+              (keydown.enter)="commitName()"
+              (blur)="commitName()" />
+            <button
+              mat-icon-button
+              matSuffix
+              (click)="commitName()"
+              [disabled]="nameCtrl.invalid"
+              aria-label="Enregistrer">
+              <mat-icon fontSet="material-symbols-outlined">check</mat-icon>
+            </button>
+          </mat-form-field>
+        }
+      </div>
+
+      @if (!displayName) {
+        <mat-hint>Tu peux rester anonyme si tu veux ;)</mat-hint>
+      }
     </mat-card-content>
   </mat-card>
 
-  <!-- Rejoindre une salle -->
-  <mat-card class="card">
+  <!-- Créer une salle -->
+  <mat-card class="create-card">
     <mat-card-header>
-      <mat-card-title class="h6">Rejoindre une salle</mat-card-title>
-      <mat-card-subtitle style="padding: 20px 0px;">Par code ou via la liste</mat-card-subtitle>
+      <mat-card-title>Créer une salle</mat-card-title>
+      <mat-card-subtitle>Choisis un mode puis démarre</mat-card-subtitle>
     </mat-card-header>
 
-    <mat-card-content class="join-grid" style="padding-bottom: 20px;">
-      <mat-form-field appearance="outline" class="fx1">
-        <mat-label>Code de salle</mat-label>
-        <input
-          matInput
-          [(ngModel)]="joinCode"
-          (ngModelChange)="onJoinCodeInput($event)"
-          (keyup.enter)="quickJoin()"
-          maxlength="8"
-          inputmode="latin-prose"
-          autocapitalize="characters"
-          autocomplete="one-time-code"
-          placeholder="ABCD12"
-          aria-label="Code de salle"
-        />
-        <mat-hint>6–8 caractères alphanumériques</mat-hint>
-      </mat-form-field>
+    <mat-card-content>
+      <div class="row mode-picker" aria-label="Choix du mode">
+        <mat-chip-set>
+          <mat-chip-option
+            [selected]="facade.mode === 'classic'"
+            (click)="facade.mode = 'classic'">
+            classic
+          </mat-chip-option>
 
-      <button
-        mat-stroked-button
-        color="primary"
-        class="btn-secondary"
-        (click)="quickJoin()"
-        [disabled]="!(joinCode && joinCode.length >= 4)"
-        aria-label="Rejoindre avec le code"
-      >
-        <mat-icon fontSet="material-symbols-outlined">login</mat-icon>
-        <span class="btn-text">Rejoindre</span>
-      </button>
-    </mat-card-content>
+          <mat-chip-option
+            [selected]="facade.mode === 'transmission'"
+            (click)="facade.mode = 'transmission'">
+            transmission
+          </mat-chip-option>
 
-    <mat-divider></mat-divider>
+          <!-- Garde celle-ci seulement si GameMode inclut 'infection' -->
+          <mat-chip-option
+            [selected]="facade.mode === 'infection'"
+            (click)="facade.mode = 'infection'">
+            infection
+          </mat-chip-option>
+        </mat-chip-set>
+      </div>
 
-    <mat-card-content >
-      @if (loading) {
-        <mat-progress-bar mode="indeterminate"></mat-progress-bar>
-      } @else {
-        @let rooms = (rooms$ | async) ?? [];
-
-        @if (rooms.length > 0) {
-          <mat-nav-list class="rooms">
-            @for (r of rooms; track r.id) {
-              <mat-list-item
-                class="room-item"
-                (click)="join(r)"
-                matRipple
-                aria-label="Rejoindre la room {{ r.id }}"
-              >
-                <!-- Avatar / pictogramme -->
-                <div matListItemIcon class="room-icon">
-                  <div class="room-avatar">
-                    <mat-icon fontSet="material-symbols-outlined">sports_esports</mat-icon>
-                  </div>
-                </div>
-
-                <!-- Titre & sous-titre -->
-                <div matListItemTitle class="room-title">
-                  <span class="room-id">#{{ r.id }}</span>
-                  <span class="dot">•</span>
-
-                  <!-- Joueurs avec badge -->
-                  <span
-                    class="room-players"
-                    [matBadge]="r.players ?? 0"
-                    matBadgeColor="primary"
-                    matBadgeSize="small"
-                    matBadgeOverlap="false"
-                    matBadgeDescription="Nombre de joueurs"
-                  >
-                    <mat-icon fontSet="material-symbols-outlined" class="meta-ic">groups</mat-icon>
-                    joueurs
-                  </span>
-
-                  <!-- Mode (chip colorée) -->
-                  <mat-chip class="mode-chip" [ngClass]="'mode-' + (r.mode || 'classic')">
-                    <mat-icon fontSet="material-symbols-outlined">tune</mat-icon>
-                    {{ r.mode || 'classic' }}
-                  </mat-chip>
-                </div>
-
-                <div matListItemLine class="room-meta">
-                  <mat-chip-set aria-label="Métadonnées de la room" class="meta-chips">
-                    <mat-chip>
-                      <mat-icon fontSet="material-symbols-outlined">sports_score</mat-icon>
-                      <span>Score&nbsp;: {{ r.targetScore || '—' }}</span>
-                    </mat-chip>
-
-                    <mat-chip>
-                      <mat-icon fontSet="material-symbols-outlined">timer</mat-icon>
-                      <span>Limite&nbsp;: {{ r.timeLimit || '—' }}s</span>
-                    </mat-chip>
-
-                    <mat-chip
-                      [color]="(r.state === 'running' || r.state === 'in-progress') ? 'primary' : undefined"
-                      [class.chip-active]="(r.state === 'running' || r.state === 'in-progress')"
-                      class="state-chip"
-                    >
-                      <span class="state-dot" [class.is-on]="(r.state === 'running' || r.state === 'in-progress')"></span>
-                      <span class="state-text">{{ r.state }}</span>
-                    </mat-chip>
-
-                    <mat-chip appearance="outlined">
-                      <mat-icon fontSet="material-symbols-outlined">schedule</mat-icon>
-                      <span>Créée {{ r.createdAtMs | relativeTime }}</span>
-                    </mat-chip>
-                  </mat-chip-set>
-                </div>
-
-                <!-- Actions -->
-                <div matListItemMeta class="actions">
-                  <button
-                    mat-mini-fab
-                    color="warn"
-                    class="action-btn action-delete"
-                    (click)="$event.stopPropagation(); onDeleteRoom(r.id)"
-                    [disabled]="deletingId() === r.id"
-                    matTooltip="Supprimer la salle"
-                    aria-label="Supprimer {{ r.id }}"
-                  >
-                    <mat-icon fontSet="material-symbols-outlined">delete_forever</mat-icon>
-                  </button>
-
-                  <button
-                    mat-mini-fab
-                    color="primary"
-                    class="action-btn action-enter"
-                    (click)="$event.stopPropagation(); join(r)"
-                    matTooltip="Entrer dans la salle"
-                    aria-label="Entrer {{ r.id }}"
-                  >
-                    <mat-icon fontSet="material-symbols-outlined">arrow_forward</mat-icon>
-                  </button>
-                </div>
-              </mat-list-item>
-
-              <mat-divider inset></mat-divider>
-            }
-          </mat-nav-list>
-        } @else {
-          <div class="empty">
-            <mat-icon fontSet="material-symbols-outlined">info</mat-icon>
-            Aucune room pour le moment.
-          </div>
-        }
+      @if (facade.mode === 'classic') {
+        <div class="row">
+          <mat-form-field class="fx1" appearance="outline">
+            <mat-label>Score cible</mat-label>
+            <input matInput type="number" min="1" [ngModel]="facade.targetScore"
+                   (ngModelChange)="facade.targetScore=$event" />
+          </mat-form-field>
+        </div>
       }
     </mat-card-content>
 
     <mat-card-actions align="end">
-      <button mat-button class="btn-ghost" (click)="refresh()" [disabled]="loading"
-              aria-label="Actualiser la liste">
-        <mat-icon fontSet="material-symbols-outlined">refresh</mat-icon>
-        Actualiser
+      <button mat-raised-button color="primary" (click)="createRoom()">
+        Créer
       </button>
     </mat-card-actions>
   </mat-card>
-</div>
 
-<!-- FAB primaire (mobile) -->
-<button class="fab" mat-fab color="primary"
-        (click)="createRoom()"
-        [disabled]="!(displayName && displayName.trim())"
-        aria-label="Créer une salle">
-  <mat-icon fontSet="material-symbols-outlined">add</mat-icon>
-</button>
+  <!-- Rejoindre par code -->
+  <mat-card class="join-card">
+    <mat-card-header>
+      <mat-card-title>Rejoindre une salle</mat-card-title>
+      <mat-card-subtitle>Entre le code</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      <div class="row">
+        <mat-form-field class="fx1" appearance="outline">
+          <mat-label>Code</mat-label>
+          <input matInput maxlength="8"
+              [value]="joinCode"
+              (input)="onJoinCodeInput($any($event.target).value)" />
+        </mat-form-field>
+
+        <button mat-raised-button color="accent" (click)="quickJoin()" [disabled]="!joinCode">
+          Rejoindre
+        </button>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Liste des salles -->
+  <mat-card class="rooms-card">
+    <mat-card-header>
+      <mat-card-title>Salles récentes</mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+      @if (loading) {
+        <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+      } @else {
+        <ng-container *ngIf="rooms$ | async as rooms">
+          @if (rooms.length) {
+            <mat-nav-list class="rooms" style="padding-bottom: 20px;">
+              @for (r of rooms; track r.id) {
+                <mat-list-item class="room-item" (click)="join(r)" matRipple
+                               aria-label="Rejoindre la room {{ r.id }}">
+                  <!-- Titre -->
+                  <div matListItemTitle class="room-title">
+                    <span class="room-id">#{{ r.id }}</span>
+                    <span class="dot">•</span>
+
+                    <!-- Joueurs avec badge -->
+                    <span class="room-players"
+                          [matBadge]="r.players ?? 0"
+                          matBadgeColor="primary"
+                          matBadgeSize="small"
+                          matBadgeOverlap="false"
+                          matBadgeDescription="Nombre de joueurs">
+                      <mat-icon fontSet="material-symbols-outlined" class="meta-ic">groups</mat-icon>
+                    </span>
+
+                    <span class="dot">•</span>
+                    <!-- État -->
+                    @switch (r.state) {
+                      @case ('running')    { <span class="state chip running">en cours</span> }
+                      @case ('in-progress'){ <span class="state chip running">en cours</span> }
+                      @case ('ended')      { <span class="state chip done">terminée</span> }
+                      @default             { <span class="state chip idle">disponible</span> }
+                    }
+
+                    <span class="dot">•</span>
+                    <!-- Mode -->
+                    <span class="mode chip">{{ r.mode ?? 'classic' }}</span>
+
+                    <span class="dot">•</span>
+                    <!-- Date relative -->
+                    <span class="updated">maj <span class="rel">{{ r.createdAtMs | relativeTime }}</span></span>
+                  </div>
+
+                  <!-- Actions -->
+                  <div matListItemMeta class="actions">
+                    @if (deletingId() === r.id) {
+                      <mat-progress-bar mode="indeterminate" style="width:120px"></mat-progress-bar>
+                    } @else {
+                      <button mat-icon-button color="warn"
+                              (click)="$event.stopPropagation(); onDeleteRoom(r.id)"
+                              aria-label="Supprimer la room">
+                        <mat-icon fontSet="material-symbols-outlined">delete</mat-icon>
+                      </button>
+                    }
+                  </div>
+                </mat-list-item>
+              }
+            </mat-nav-list>
+          } @else {
+            <div class="empty">
+              <p>Aucune salle pour l’instant.</p>
+              <button mat-stroked-button color="primary" (click)="createRoom()">Créer une salle</button>
+            </div>
+          }
+        </ng-container>
+      }
+    </mat-card-content>
+  </mat-card>
+</div>
