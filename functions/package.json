@@ -11,7 +11,8 @@
     "lint": "eslint \"src/**/*.ts\"",
     
     "get:lobby": "node scripts/concat-files.mjs C:/Users/malri/tag-cartesien/src/app/pages/lobby ./snapshot_lobby.txt",
-    
+     "get:room": "node scripts/concat-files.mjs C:/Users/malri/tag-cartesien/src/app/pages/room ./snapshot_room.txt",
+    "get:play": "node scripts/concat-files.mjs C:/Users/malri/tag-cartesien/src/app/pages/play ./snapshot_play.txt",
     "get:app": "node scripts/concat-files.mjs C:/Users/malri/tag-cartesien/src/app ../snapshot_app.txt",
     "get:script": "node scripts/concat-files.mjs C:/Users/malri/tag-cartesien/functions/scripts ./snapshot_script.txt",
     

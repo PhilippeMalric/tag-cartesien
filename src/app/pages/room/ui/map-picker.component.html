@@ -1,11 +1,42 @@
-<!-- src/app/pages/room/ui/map-picker.component.html -->
+<!-- Contrôles XY -->
+<div class="xy-controls" aria-label="Saisir les coordonnées cartésiennes">
+  <mat-form-field appearance="outline" class="xy-field">
+    <mat-label>X</mat-label>
+    <input
+      matInput
+      type="number"
+      inputmode="numeric"
+      [value]="localXY().x"
+      (input)="onXInput($any($event.target).value)"
+      (blur)="onXBlur()"
+      (keyup.enter)="commitX()"
+      aria-label="Coordonnée X"
+      min="-50" max="50" step="1" />
+    <mat-hint>−50 à 50</mat-hint>
+  </mat-form-field>
+
+  <mat-form-field appearance="outline" class="xy-field">
+    <mat-label>Y</mat-label>
+    <input
+      matInput
+      type="number"
+      inputmode="numeric"
+      [value]="localXY().y"
+      (input)="onYInput($any($event.target).value)"
+      (blur)="onYBlur()"
+      (keyup.enter)="commitY()"
+      aria-label="Coordonnée Y"
+      min="-50" max="50" step="1" />
+    <mat-hint>−50 à 50</mat-hint>
+  </mat-form-field>
+</div>
+
+<!-- Canvas interactif (garde le plan cartésien) -->
 <canvas #cv
+        class="map-canvas"
         (pointerdown)="onPointerDown($event)"
         (pointermove)="onPointerMove($event)"
         (pointerup)="endDrag($event)"
-        (pointercancel)="endDrag($event)"
-        style="width:100%;height:240px;touch-action:none;display:block;border-radius:12px;">
+        (pointerleave)="endDrag($event)"
+        aria-label="Sélection du point sur le plan">
 </canvas>
-
-<!-- badge coord (utiliser le signal local) -->
-<div class="coord-badge">x: {{ localXY().x }} · y: {{ localXY().y }}</div>
