@@ -188,3 +188,18 @@ html.dark .tag-toast {
   margin-left: 8px;
   font-weight: 600;
 }
+:root {
+  --canvas-bg: #0f1115;
+  --grid: #202124;
+  --axis: #f0f1f3;
+  --axis-strong: #ffffff;
+  --tick: #ffffff;
+  --label-stroke: rgba(0,0,0,0.65);
+  --self: #3fa7ff;
+  --other: #9aa0a6;
+  --hunter: #ff7a00;
+  --tag-ring: rgba(211,47,47,.35);
+}
+html.dark {
+  --canvas-bg: #0b0d10;
+}
