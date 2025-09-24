@@ -51,23 +51,37 @@ export class MatchService {
   async emitTag(matchId: string, x: number, y: number, victimUid: string) {
     const uid = this.uid;
     if (!uid) return;
-
     const now = Date.now();
 
-    // 🔒 Garde locale (évite double émission en < 1 s)
+    // ⛔️ NEW: règle "sans retag"
+    const me = await this.getPlayer(matchId, uid); // déjà existant chez toi
+    if (me?.noRetagUid === victimUid && me?.noRetagUntilMs && now < me.noRetagUntilMs) {
+      const err: any = new Error('no-retag');
+      err.retryInMs = me.noRetagUntilMs - now;
+      throw err; // à gérer côté UI (petit toast)
+    }
+
+    // (garde "lock" globale existante)
+    if (me?.cantTagUntilMs && now < me.cantTagUntilMs) {
+      const err: any = new Error('cant-tag-cooldown');
+      err.retryInMs = me.cantTagUntilMs - now;
+      throw err;
+    }
+
+    // (optionnel) vérifie rôle chasseur
+    if (me?.role !== 'chasseur') {
+      throw new Error('not-hunter');
+    }
+
+    // 🔒 Garde LOCALE anti double-émission
     const lastLocal = this._lastEmitByHunter.get(uid) ?? 0;
-    
-    
     if (now - lastLocal < this.EMIT_COOLDOWN_MS) {
       const err: any = new Error('emit-cooldown');
       err.retryInMs = this.EMIT_COOLDOWN_MS - (now - lastLocal);
-      console.log("now - lastLocal",now - lastLocal,this.EMIT_COOLDOWN_MS);
-     // throw err;
+      throw err;
     }
 
-    
-
-    // 🟢 On "arme" le cooldown local tout de suite, et on revert en cas d'échec
+    // 🟢 Arme le cooldown local tout de suite, rollback si échec
     this._lastEmitByHunter.set(uid, now);
     try {
       await addDoc(collection(this.fs, `rooms/${matchId}/events`), {
@@ -78,7 +92,6 @@ export class MatchService {
         ts: serverTimestamp(),
       });
     } catch (e) {
-      // Rollback si l'écriture échoue
       this._lastEmitByHunter.delete(uid);
       throw e;
     }

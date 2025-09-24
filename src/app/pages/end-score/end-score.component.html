@@ -1,0 +1,63 @@
+<div class="wrap">
+  <mat-card class="score-card">
+    <div class="head">
+      <div class="title">
+        <mat-icon fontSet="material-icons-outlined" fontIcon="emoji_events"></mat-icon>
+        <span>Fin de la partie</span>
+      </div>
+
+      <div class="meta" *ngIf="room$ | async as room">
+        <span class="chip">Mode : {{ room.mode || 'classic' }}</span>
+        <span class="chip" *ngIf="room.targetScore">Cible : {{ room.targetScore }}</span>
+      </div>
+    </div>
+
+    <mat-divider></mat-divider>
+
+    <!-- Vainqueur -->
+    <div class="winner" *ngIf="vm$ | async as vm; else noPlayers">
+      <div class="winner-line" *ngIf="vm.winner as w">
+        <div class="rank">#1</div>
+        <div class="name">
+          <span class="crown">👑</span>
+          <strong>{{ w.displayName }}</strong>
+        </div>
+        <div class="score">{{ w.score }}</div>
+      </div>
+
+      <mat-divider></mat-divider>
+
+      <!-- Classement -->
+      <div class="list">
+        <div class="row head">
+          <div class="col-rank">#</div>
+          <div class="col-name">Joueur</div>
+          <div class="col-score">Score</div>
+          <div class="col-tags">Tags</div>
+          <div class="col-streak">Streak</div>
+        </div>
+
+        <div class="row" *ngFor="let p of vm.rows; trackBy: trackByUid" [class.first]="p.rank === 1">
+          <div class="col-rank">{{ p.rank }}</div>
+          <div class="col-name">{{ p.displayName }}</div>
+          <div class="col-score">{{ p.score }}</div>
+          <div class="col-tags">{{ p.tags }}</div>
+          <div class="col-streak">{{ p.bestStreak }}</div>
+        </div>
+      </div>
+    </div>
+
+    <ng-template #noPlayers>
+      <div class="empty">Aucun joueur trouvé.</div>
+    </ng-template>
+
+    <mat-divider></mat-divider>
+
+    <div class="actions">
+      <button mat-stroked-button color="primary" (click)="backToLobby()">
+        <mat-icon fontSet="material-icons-outlined" fontIcon="home"></mat-icon>
+        Retour au lobby
+      </button>
+    </div>
+  </mat-card>
+</div>

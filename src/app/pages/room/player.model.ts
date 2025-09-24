@@ -8,4 +8,5 @@ export type Player = {
   score?: number;
   iFrameUntilMs?: number;
   spawn?: { x: number; y: number }; // ← ajout
+  cantTagUntilMs?: number;
 };

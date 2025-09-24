@@ -1,7 +1,8 @@
 import {
   Component, ElementRef, ViewChild, inject,
   OnInit, OnDestroy, ChangeDetectionStrategy,
-  ChangeDetectorRef, EnvironmentInjector, NgZone
+  ChangeDetectorRef, EnvironmentInjector, NgZone,
+  signal
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -30,6 +31,7 @@ import { MobileDpadComponent } from './ui/mobile-dpad.component';
 
 import { DragDropModule } from '@angular/cdk/drag-drop';
 import { SpawnCoordService } from '../../services/spawn-coord.service';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 
 @Component({
   selector: 'app-play',
@@ -38,7 +40,8 @@ import { SpawnCoordService } from '../../services/spawn-coord.service';
     CommonModule,
     MatToolbarModule, MatButtonModule, MatIconModule,
     MatChipsModule, MatProgressBarModule, MatTooltipModule,
-    ScoreboardOverlayComponent, MobileDpadComponent, DragDropModule
+    ScoreboardOverlayComponent, MobileDpadComponent, DragDropModule,
+    MatSlideToggleModule
   ],
   styleUrls: ['./play.component.scss'],
   templateUrl: './play.component.html',
@@ -99,7 +102,13 @@ roomMode: 'classic'|'transmission' = 'classic';
 
   private dispose: (() => void) | null = null;
 
+ readonly showScoreboard = signal<boolean>(false);
+
   ngOnInit(): void {
+
+   const saved = localStorage.getItem('showScoreboard');
+  if (saved === '1') this.showScoreboard.set(true);
+  window.addEventListener('keydown', this._onKey);
     // Route / matchId / uid initial
     this.matchId = this.route.snapshot.paramMap.get('matchId')
                 || this.route.snapshot.paramMap.get('id') || '';
@@ -165,5 +174,22 @@ this.dispose = setupPlay(this);
 
   ngOnDestroy(): void {
     try { this.dispose?.(); } finally { this.dispose = null; }
+      window.removeEventListener('keydown', this._onKey);
+
   }
+
+  private _onKey = (e: KeyboardEvent) => {
+    if (e.key.toLowerCase() === 's') {
+      const next = !this.showScoreboard();
+      this.showScoreboard.set(next);
+      localStorage.setItem('showScoreboard', next ? '1' : '0');
+    }
+  };
+
+  // Méthode utilisée par le switch UI
+  setShowScoreboard(v: boolean) {
+    this.showScoreboard.set(v);
+    localStorage.setItem('showScoreboard', v ? '1' : '0');
+  }
+
 }

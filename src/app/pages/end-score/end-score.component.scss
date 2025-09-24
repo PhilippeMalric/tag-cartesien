@@ -1,0 +1,82 @@
+.wrap {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--canvas-bg, #0f1115);
+}
+
+.score-card {
+  width: min(820px, 94vw);
+  border-radius: 16px;
+  backdrop-filter: blur(4px);
+  background: rgba(0,0,0,0.35);
+  color: #fff;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 8px 12px;
+
+  .title {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 700; font-size: 20px;
+  }
+  .meta {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    .chip {
+      font-size: 12px; padding: 4px 8px; border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+    }
+  }
+}
+
+.winner {
+  padding: 12px;
+  .winner-line {
+    display: grid;
+    grid-template-columns: 3rem 1fr 4rem;
+    align-items: center;
+    padding: 8px 0;
+    .rank   { text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .name   { display: flex; align-items: center; gap: 8px; font-size: 18px; }
+    .crown  { font-size: 20px; }
+    .score  { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+  }
+}
+
+.list {
+  padding: 4px 0 8px 0;
+
+  .row.head {
+    opacity: .75; font-size: 12px; padding-bottom: 4px;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 3rem 1fr 4rem 3.5rem 4.5rem; /* + tags + streak */
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+
+    &:last-child { border-bottom: none; }
+    &.first { opacity: .90; }
+
+    .col-rank  { text-align: center; font-variant-numeric: tabular-nums; }
+    .col-name  { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .col-score { text-align: right;  font-weight: 700; font-variant-numeric: tabular-nums; }
+    .col-tags  { text-align: right;  font-variant-numeric: tabular-nums; }
+    .col-streak{ text-align: right;  font-weight: 700; font-variant-numeric: tabular-nums; }
+  }
+}
+
+.empty {
+  padding: 12px; opacity: .7; text-align: center; font-style: italic;
+}
+
+.actions {
+  display: flex; gap: 8px; justify-content: flex-end; padding: 12px;
+}

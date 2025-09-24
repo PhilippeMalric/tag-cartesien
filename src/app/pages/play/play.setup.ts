@@ -159,6 +159,11 @@ console.log("roomSub",ctx.matchId);
         handledEventIds.add(id);
 
         if (ev.type === 'tag') {
+
+          // NEW: invulnérabilité visible côté chasseur (fallback global)
+          ctx.hunterIFrameUntilMs = Date.now() + GAME_CONSTANTS.INVULN_MS;
+
+
           ctx.recentTag = {
             label: `${ev.hunterUid.slice(0, 6)} a tagué ${ev.victimUid.slice(0, 6)}`,
             until: Date.now() + 2500,
@@ -218,8 +223,8 @@ console.log("roomSub",ctx.matchId);
       let vx = 0,
         vy = 0;
       const k = ctx.keys;
-      if (k.has('w') || k.has('z') || k.has('arrowup')) vy -= 1;
-      if (k.has('s') || k.has('arrowdown')) vy += 1;
+      if (k.has('w') || k.has('z') || k.has('arrowup')) vy += 1;
+      if (k.has('s') || k.has('arrowdown')) vy -= 1;
       if (k.has('a') || k.has('q') || k.has('arrowleft')) vx -= 1;
       if (k.has('d') || k.has('arrowright')) vx += 1;
       const mag = Math.hypot(vx, vy);
@@ -274,6 +279,7 @@ console.log("roomSub",ctx.matchId);
         invulnerableUntil: ctx.invulnerableUntil,
         tagRadius: GAME_CONSTANTS.TAG_RADIUS,
         hunterUid: ctx.hunterUid, // ← NEW
+         hunterIFrameUntilMs: ctx.hunterIFrameUntilMs,
       });
 
       rafId = requestAnimationFrame(loop);

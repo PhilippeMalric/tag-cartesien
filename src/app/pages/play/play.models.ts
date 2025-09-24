@@ -17,6 +17,11 @@ export type MyPlayerDoc = {
   score?: number;
   iFrameUntilMs?: number;
   spawn?: { x: number; y: number }; // ← ajout
+  
+  cantTagUntilMs?: number;
+  // NEW (pour SANS RETAG)
+  noRetagUid?: string;         // uid que je n'ai pas le droit de retag pour l'instant
+  noRetagUntilMs?: number; 
 };
 
 
@@ -24,7 +29,7 @@ export type MyPlayerDoc = {
 export const GAME_CONSTANTS = {
   TAG_RADIUS: 5,                 // un peu plus large si déplacements par pas
   TAG_COOLDOWN_MS: 5000,
-  INVULN_MS: 1200,
+  INVULN_MS: 1000,
   RESPAWN_BOUNDS: { minX: -45, maxX: 45, minY: -45, maxY: 45, minDistFromHunter: 12 },
 
   // NOUVEAU: déplacements par pas
@@ -42,6 +47,7 @@ export interface RenderState {
   tagRadius: number;
   invulnerableUntil: number;
   hunterUid: string | null;   // ← NEW
+  hunterIFrameUntilMs?: number;
 }
 
 export const PLAY_COLORS = {

@@ -57,5 +57,6 @@ export interface PlayCtx {
   desiredBots?: number;
 
   spawnSvc: SpawnCoordService;
-  sub:Subscription
+  sub:Subscription;
+  hunterIFrameUntilMs?: number;
 }

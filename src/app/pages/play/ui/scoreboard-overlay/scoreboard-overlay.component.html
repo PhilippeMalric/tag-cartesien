@@ -1,12 +1,50 @@
-<div class="scoreboard">
-  <div
-    class="line"
-    *ngFor="let p of vm$ | async; trackBy: trackByUid; index as i"
-    [class.me]="p.isSelf"
-    [class.bot]="p.isBot"
-  >
-    <span class="pos">#{{ i + 1 }}</span>
-    <span class="name">{{ p.displayName }}</span>
-    <span class="score">{{ p.score }}</span>
+<div class="sb-container">
+  <div class="sb-card">
+    <!-- Header compact -->
+    <div class="sb-header" *ngIf="header$ | async as h">
+      <div class="sb-title">
+        <span class="emoji">🏆</span>
+        <span>Scoreboard</span>
+      </div>
+      <div class="sb-meta">
+        <span class="chip">Mode&nbsp;: {{ h.mode }}</span>
+        <span class="chip" *ngIf="h.targetScore">Cible&nbsp;: {{ h.targetScore }}</span>
+        <span class="chip">Joueurs&nbsp;: {{ h.playersCount }}</span>
+      </div>
+    </div>
+
+    <!-- Head row -->
+    <div class="sb-body">
+      <div class="sb-row sb-head">
+        <div class="col-rank">#</div>
+        <div class="col-name">Joueur</div>
+        <div class="col-score">Score</div>
+      </div>
+
+      <!-- Rows -->
+      <div
+        class="sb-row"
+        *ngFor="let p of vm$ | async; trackBy: trackByUid; index as i"
+        [class.sb-me]="p.isSelf"
+        [class.sb-bot]="p.isBot"
+        [class.sb-hunter]="p.isHunter"
+      >
+        <div class="col-rank">{{ i + 1 }}</div>
+
+        <div class="col-name">
+          <span class="emoji" *ngIf="p.isHunter" title="Chasseur">👑</span>
+          <span class="name" [class.self]="p.isSelf">{{ p.displayName }}</span>
+          <span class="chip chip-me" *ngIf="p.isSelf">toi</span>
+          <span class="chip chip-role" *ngIf="!p.isHunter && p.role === 'chassé'">chassé</span>
+        </div>
+
+        <div class="col-score">
+          <span class="score">{{ p.score }}</span>
+          <span class="delta" *ngIf="p.justScored" aria-live="polite">+1</span>
+        </div>
+      </div>
+
+      <div class="sb-empty" *ngIf="(vm$ | async)?.length === 0">Aucun joueur</div>
+    </div>
   </div>
 </div>

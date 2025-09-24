@@ -1,7 +1,19 @@
+// src/app/pages/play/play.renderer.ts
 import { RenderState } from './play.models';
+
 export class PlayRenderer {
   draw(canvas: HTMLCanvasElement, state: RenderState) {
     const ctx = canvas.getContext('2d')!;
+
+    // --- INVULN params (UI uniquement) ---
+    const INVULN_DEFAULT_MS = 1000; // si on ne connaît pas la durée exacte
+    const RING_OUTER = 14;          // rayon externe de l’anneau
+    const RING_INNER = 10;          // rayon interne
+    const RING_WIDTH = RING_OUTER - RING_INNER;
+
+    // --- Helpers de temps
+    const epochToPerfDeadline = (deadlineEpochMs: number) =>
+      performance.now() + Math.max(0, deadlineEpochMs - Date.now());
 
     // --- DPR + taille responsive ---
     const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
@@ -25,6 +37,11 @@ export class PlayRenderer {
     const colorOther      = css.getPropertyValue('--other').trim()        || '#9aa0a6';
     const colorHunter     = css.getPropertyValue('--hunter').trim()       || '#ff7a00';
     const colorRing       = css.getPropertyValue('--tag-ring').trim()     || 'rgba(211,47,47,.35)';
+
+    // Invuln UI (personnalisable)
+    const invColRing = css.getPropertyValue('--invuln-ring').trim() || 'rgba(63,167,255,.85)';
+    const invColFill = css.getPropertyValue('--invuln-fill').trim() || 'rgba(63,167,255,.15)';
+    const invColText = css.getPropertyValue('--invuln-text').trim() || '#ffffff';
 
     ctx.clearRect(0, 0, w, h);
 
@@ -73,52 +90,119 @@ export class PlayRenderer {
       ctx.fillText(text, x, y);
     };
 
-    // Graduations X (en bas)
+    // Compte repères
     for (let i = -50; i <= 50; i += 10) {
-      if (i === 0) continue;
-      drawTextWithHalo(String(i), cx + i * scale, cy + 4, 'center', 'top');
+      if (i !== 0) drawTextWithHalo(String(i), cx + i * scale, cy + 4, 'center', 'top'); // X
     }
-    // Graduations Y (à gauche)
     for (let i = -50; i <= 50; i += 10) {
-      if (i === 0) continue;
-      drawTextWithHalo(String(i), cx - 4, cy - i * scale, 'right', 'middle'); // y inversé
+      if (i !== 0) drawTextWithHalo(String(i), cx - 4, cy - i * scale, 'right', 'middle'); // Y
     }
-    // Libellés X/Y
     drawTextWithHalo('Y', cx - 2, cy - (55 * scale), 'right', 'middle');
     drawTextWithHalo('X', cx + (55 * scale), cy, 'center', 'alphabetic');
+
+    // --- Helper: anneau d’invulnérabilité + timer
+    const drawInvulnRing = (
+      px: number, py: number,
+      untilPerfMs: number,
+      labelSide: 'left' | 'right' | 'top' | 'bottom' = 'top'
+    ) => {
+      const now = performance.now();
+      const left = Math.max(0, untilPerfMs - now);
+      if (left <= 0) return;
+
+      const frac = Math.max(0, Math.min(1, left / INVULN_DEFAULT_MS));
+
+      // fond doux
+      ctx.beginPath();
+      ctx.fillStyle = invColFill;
+      ctx.arc(px, py, RING_OUTER, 0, Math.PI * 2);
+      ctx.fill();
+
+      // arc de progression
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineWidth = RING_WIDTH;
+      ctx.strokeStyle = invColRing;
+      const start = -Math.PI / 2; // 12h
+      const end = start + Math.PI * 2 * frac;
+      ctx.beginPath();
+      ctx.arc(px, py, (RING_INNER + RING_OUTER) / 2, start, end);
+      ctx.stroke();
+      ctx.restore();
+
+      // label "x.xs"
+      const secs = (left / 1000).toFixed(1);
+      ctx.save();
+      ctx.font = '600 11px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+      ctx.fillStyle = invColText;
+      ctx.textAlign = (labelSide === 'left' ? 'right' : labelSide === 'right' ? 'left' : 'center');
+      ctx.textBaseline = (labelSide === 'top' ? 'bottom' : labelSide === 'bottom' ? 'top' : 'middle');
+      const off = 16;
+      let tx = px, ty = py;
+      if      (labelSide === 'left')   tx -= off;
+      else if (labelSide === 'right')  tx += off;
+      else if (labelSide === 'top')    ty -= off;
+      else if (labelSide === 'bottom') ty += off;
+      ctx.shadowColor = 'rgba(0,0,0,.55)';
+      ctx.shadowBlur = 4;
+      ctx.fillText(`${secs}s`, tx, ty);
+      ctx.restore();
+    };
 
     // --- Autres joueurs (gris par défaut, orange si chasseur) ---
     for (const [uid, p] of state.others) {
       const isHunter = !!state.hunterUid && uid === state.hunterUid;
+      const px = cx + p.x * scale;
+      const py = cy - p.y * scale;
+
+      // Invulnérabilité côté autres joueurs
+      // Accepte number ms OU Firestore Timestamp-like { seconds, nanoseconds }
+      let untilMs: number | undefined;
+      const raw = (p as any)?.iFrameUntilMs;
+      if (typeof raw === 'number') {
+        untilMs = raw;
+      } else if (raw && typeof raw.seconds === 'number') {
+        // Firestore Timestamp
+        untilMs = (raw.seconds * 1000) + (raw.nanoseconds ? raw.nanoseconds / 1e6 : 0);
+      }
+
+      // Fallback: si c'est le chasseur et pas d'iFrame sur le doc joueur,
+      // essaye un champ global passé dans RenderState (epoch ms)
+      const hunterFallback = (state as any)?.hunterIFrameUntilMs as number | undefined;
+      if (!untilMs && isHunter && typeof hunterFallback === 'number') {
+        untilMs = hunterFallback;
+      }
+
+      if (untilMs && untilMs > Date.now()) {
+        drawInvulnRing(px, py, epochToPerfDeadline(untilMs), 'bottom');
+      }
+
       ctx.fillStyle = isHunter ? colorHunter : colorOther;
       ctx.beginPath();
-      ctx.arc(cx + p.x * scale, cy - p.y * scale, 6, 0, Math.PI * 2); // y inversé
+      ctx.arc(px, py, 6, 0, Math.PI * 2); // y inversé
       ctx.fill();
     }
 
-    // --- Halo d’invulnérabilité autour de "moi" (optionnel) ---
-    if (performance.now() < state.invulnerableUntil) {
-      const left = Math.max(0, state.invulnerableUntil - performance.now());
-      const alpha = Math.max(0.15, Math.min(0.5, left / (state.invulnerableUntil ? left : 1)));
-      const stroke = (state.role === 'chasseur' ? colorHunter : colorSelf) + '55';
-      ctx.strokeStyle = stroke;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(cx + state.me.x * scale, cy - state.me.y * scale, 12 * (alpha || 0.2), 0, Math.PI * 2);
-      ctx.stroke();
+    // --- Moi (anneau d’invulnérabilité + point) ---
+    const mePx = cx + state.me.x * scale;
+    const mePy = cy - state.me.y * scale;
+
+    // Invulnérabilité locale (deadline basée sur performance.now())
+    if (state.invulnerableUntil && performance.now() < state.invulnerableUntil) {
+      drawInvulnRing(mePx, mePy, state.invulnerableUntil, 'top');
     }
 
-    // --- Moi (orange si chasseur, sinon bleu) ---
+    // Moi (orange si chasseur, sinon bleu)
     ctx.fillStyle = state.role === 'chasseur' ? colorHunter : colorSelf;
     ctx.beginPath();
-    ctx.arc(cx + state.me.x * scale, cy - state.me.y * scale, 8, 0, Math.PI * 2); // y inversé
+    ctx.arc(mePx, mePy, 8, 0, Math.PI * 2); // y inversé
     ctx.fill();
 
     // --- Anneau de portée (seulement si je suis chasseur) ---
     if (state.role === 'chasseur') {
       ctx.strokeStyle = colorRing;
       ctx.beginPath();
-      ctx.arc(cx + state.me.x * scale, cy - state.me.y * scale, state.tagRadius * scale, 0, Math.PI * 2);
+      ctx.arc(mePx, mePy, state.tagRadius * scale, 0, Math.PI * 2);
       ctx.stroke();
     }
   }

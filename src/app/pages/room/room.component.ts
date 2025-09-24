@@ -1,13 +1,19 @@
 import {
   Component, ChangeDetectionStrategy, inject, Input, OnInit, OnDestroy,
-  EnvironmentInjector, runInInjectionContext
+  EnvironmentInjector, runInInjectionContext, ChangeDetectorRef, NgZone,
+  DestroyRef
 } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { AsyncPipe, CommonModule } from '@angular/common';
 import {
-  Observable, Subscription, combineLatest, map, of, firstValueFrom,
-  filter, take, shareReplay, Subject, debounceTime, distinctUntilChanged
+  Observable, Subscription, combineLatest, of, Subject
 } from 'rxjs';
+import {
+  map, filter, take, shareReplay, debounceTime, distinctUntilChanged,
+  switchMap, startWith, tap
+} from 'rxjs/operators';
+
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 // Material
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -25,6 +31,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 // Auth
 import { Auth as FirebaseAuth, signInAnonymously } from '@angular/fire/auth';
+import { authState } from '@angular/fire/auth';
 
 // Modèles & services
 import { Player } from './player.model';
@@ -43,7 +50,7 @@ type PlayerVM = Player & { roleResolved: Role | null };
 @Component({
   selector: 'app-room',
   standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
+  changeDetection: ChangeDetectionStrategy.Default,
   imports: [
     AsyncPipe, CommonModule,
     MatToolbarModule, MatButtonModule, MatIconModule,
@@ -62,7 +69,9 @@ export class RoomComponent implements OnInit, OnDestroy {
   protected readonly auth   = inject(FirebaseAuth);
   private readonly roomSvc  = inject(RoomService);
   private readonly snack    = inject(MatSnackBar);
-
+  private readonly cdr      = inject(ChangeDetectorRef);
+  private readonly zone     = inject(NgZone);
+private readonly destroyRef = inject(DestroyRef);
   // --- Entrées
   @Input() roomId = '';
   @Input() isOwner = false; // fallback si fourni par parent
@@ -96,11 +105,23 @@ export class RoomComponent implements OnInit, OnDestroy {
   private saveSpawn$ = new Subject<{x:number;y:number}>();
   private subs = new Subscription();
 
+  // ---- Helper: ramener un flux "dans la zone" (déclenche CD OnPush) ----
+  private inZone<T>() {
+    return (source: Observable<T>) =>
+      new Observable<T>(observer =>
+        source.subscribe({
+          next: v => this.zone.run(() => observer.next(v)),
+          error: e => this.zone.run(() => observer.error(e)),
+          complete: () => this.zone.run(() => observer.complete()),
+        })
+      );
+  }
+
   async ngOnInit(): Promise<void> {
     if (!this.roomId) this.roomId = this.route.snapshot.paramMap.get('id') ?? '';
     if (!this.roomId) { this.router.navigate(['/lobby']); return; }
 
-    // Auth + ensure player doc
+    // 1) Auth prête + ensure player doc (dans un contexte d'injection)
     await runInInjectionContext(this.env, async () => {
       if (!this.auth.currentUser) await signInAnonymously(this.auth);
       const uid = this.auth.currentUser!.uid;
@@ -113,13 +134,39 @@ export class RoomComponent implements OnInit, OnDestroy {
       }
     });
 
-    // Streams Firestore
+    // 2) Flux réactifs et *dans la zone* (avec valeurs initiales)
     runInInjectionContext(this.env, () => {
-      this.players$   = this.roomSvc.players$(this.roomId).pipe(shareReplay({bufferSize:1, refCount:true}));
-      this.room$      = this.roomSvc.room$(this.roomId).pipe(shareReplay({bufferSize:1, refCount:true}));
+      const authReady$ = authState(this.auth).pipe(
+        filter((u): u is NonNullable<typeof u> => !!u),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
+
+      const roomId$ = of(this.roomId).pipe(
+        filter((id): id is string => !!id),
+        distinctUntilChanged(),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
+
+      this.players$ = combineLatest([authReady$, roomId$]).pipe(
+        switchMap(([_, id]) => this.roomSvc.players$(id)),
+        startWith([] as Player[]),
+        this.inZone(),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
+
+      this.room$ = combineLatest([authReady$, roomId$]).pipe(
+        switchMap(([_, id]) => this.roomSvc.room$(id)),
+        startWith(null as RoomDoc | null),
+        this.inZone(),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
 
       const uid = this.auth.currentUser?.uid ?? '';
-      this.isOwner$ = this.room$.pipe(map(r => !!r && r.ownerUid === uid));
+      this.isOwner$ = this.room$.pipe(
+        map(r => !!r && r.ownerUid === uid),
+        startWith(false),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
 
       this.canStart$ = combineLatest([this.players$, this.room$]).pipe(
         map(([players, room]) =>
@@ -130,7 +177,8 @@ export class RoomComponent implements OnInit, OnDestroy {
           players.length >= 2 &&
           players.every(p => !!p.ready)
         ),
-        shareReplay({bufferSize:1, refCount:true})
+        startWith(false),
+        shareReplay({ bufferSize: 1, refCount: true })
       );
 
       this.playersVM$ = combineLatest([this.players$, this.room$]).pipe(
@@ -141,11 +189,21 @@ export class RoomComponent implements OnInit, OnDestroy {
             roleResolved: (p.role ?? roles[p.uid] ?? null) as PlayerVM['roleResolved'],
           }));
         }),
-        shareReplay({bufferSize:1, refCount:true})
+        startWith([] as PlayerVM[]),
+        this.inZone(),
+        shareReplay({ bufferSize: 1, refCount: true })
       );
     });
 
-    // Suivre mon état ready
+    this.playersVM$
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe(() => {
+          // OnPush : force un cycle de détection pour ce composant
+          this.cdr.detectChanges();
+        });
+
+
+    // 3) Suivre mon état ready (maj locale)
     this.subs.add(
       this.players$.subscribe(ps => {
         const myUid = this.auth.currentUser?.uid;
@@ -155,7 +213,7 @@ export class RoomComponent implements OnInit, OnDestroy {
       })
     );
 
-    // Navigation auto vers /play quand la partie démarre
+    // 4) Navigation auto vers /play quand la partie démarre
     this.subs.add(
       this.room$.subscribe(r => {
         if (!r) return;
@@ -169,7 +227,7 @@ export class RoomComponent implements OnInit, OnDestroy {
       })
     );
 
-    // Sauvegarde spawn debounce
+    // 5) Sauvegarde spawn debounce
     this.subs.add(
       this.saveSpawn$
         .pipe(
@@ -267,11 +325,13 @@ export class RoomComponent implements OnInit, OnDestroy {
   // --- Détails privés ---
   private async chooseRandomHunter(among: 'all' | 'ready' = 'all') {
     try {
-      const list = await firstValueFrom(
-        this.playersVM$.pipe(filter(arr => Array.isArray(arr) && arr.length > 0), take(1))
-      );
+      const list = await combineLatest([this.playersVM$]).pipe(
+        map(([arr]) => arr),
+        filter(arr => Array.isArray(arr) && arr.length > 0),
+        take(1)
+      ).toPromise();
 
-      const allPlayers = list.filter(p => p?.uid && !String(p.uid).startsWith('bot-'));
+      const allPlayers = (list ?? []).filter(p => p?.uid && !String(p.uid).startsWith('bot-'));
       const readyPlayers = allPlayers.filter(p => !!p.ready);
 
       let pool = allPlayers;
@@ -299,3 +359,4 @@ export class RoomComponent implements OnInit, OnDestroy {
     }
   }
 }
+

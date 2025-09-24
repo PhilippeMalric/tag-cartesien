@@ -15,7 +15,7 @@ export type XY = { x: number; y: number };
   templateUrl: './map-picker.component.html',
   styleUrls: ['./map-picker.component.scss'],
 })
-export class MapPickerComponent implements AfterViewInit, OnDestroy, OnChanges {
+export class MapPickerComponent implements  OnDestroy, OnChanges {
   @ViewChild('cv', { static: true }) cv!: ElementRef<HTMLCanvasElement>;
 
   /** Entrée (valeur venue du parent) */
@@ -37,6 +37,9 @@ export class MapPickerComponent implements AfterViewInit, OnDestroy, OnChanges {
   private pendingX: number | null = null;
   private pendingY: number | null = null;
 
+  private rafId: number | null = null;
+
+
   constructor(private zone: NgZone) {}
 
   // --- Cycle de vie ---
@@ -48,10 +51,47 @@ export class MapPickerComponent implements AfterViewInit, OnDestroy, OnChanges {
   }
 
   ngAfterViewInit(): void {
+    // Installer le ResizeObserver DANS la zone Angular (ne pas tout mettre hors zone)
+    this.ro = new ResizeObserver(() => {
+      // Le DESSIN seul hors zone (perf) + coalescé
+      this.zone.runOutsideAngular(() => {
+        this.resizeCanvasToCssSize();
+        this.renderRaf();
+      });
+    });
+    this.ro.observe(this.cv.nativeElement);
+
+    // Premier sizing + premier rendu (dessin hors zone)
     this.zone.runOutsideAngular(() => {
-      this.ro = new ResizeObserver(() => this.draw());
-      this.ro.observe(this.cv.nativeElement);
+      this.resizeCanvasToCssSize();
+      this.renderRaf();
+    });
+  }
+
+ /** Ajuste la taille bitmap du canvas au CSS + DPR, et fixe la transform */
+  private resizeCanvasToCssSize(): void {
+    const canvas = this.cv?.nativeElement; if (!canvas) return;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
+
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const rect = canvas.getBoundingClientRect();
+    const w = Math.max(1, Math.floor(rect.width * dpr));
+    const h = Math.max(1, Math.floor(rect.height * dpr));
+
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+      // dessiner en unités CSS grâce à la transform DPR
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+  }
+
+  /** Programme un rendu au prochain frame (coalescé) */
+  private renderRaf(): void {
+    if (this.rafId !== null) cancelAnimationFrame(this.rafId);
+    this.rafId = requestAnimationFrame(() => {
       this.draw();
+      this.rafId = null;
     });
   }
 
@@ -135,7 +175,7 @@ export class MapPickerComponent implements AfterViewInit, OnDestroy, OnChanges {
       y: (cy - ypx) / scale, // y positif vers le haut
     };
   }
-  
+
   private applyPointer(e: PointerEvent) {
     const { x, y } = this.clientToWorld(e.clientX, e.clientY);
     const nx = this.clamp(this.round(x));
