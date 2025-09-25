@@ -14,6 +14,9 @@ import { clamp, remainingInvulnMs, findVictimWithinRadius } from './play.helpers
  */
 export function setupPlay(ctx: PlayCtx): () => void {
   // Subscriptions / timers / listeners pour clean-up
+
+  let playersById: Record<string, any> = {};
+
   let mySub: any, roomSub: any, eventsSub: any, playersSub: any;
   let timerId: any = null;
   let rafId = 0;
@@ -50,6 +53,8 @@ ctx.roomSvc.getMode$(ctx.matchId).subscribe((data:any)=>{
     // Noms (annonces)
     playersSub = ctx.roomSvc.players$(ctx.matchId).subscribe((players: Player[]) => {
       // Cherche le chasseur de façon robuste
+      playersById = Object.fromEntries((players || []).map(p => [p.uid, p]));
+
       let hunter: any = null;
       if (ctx.hunterUid) {
         hunter = players.find((p: any) => p?.uid === ctx.hunterUid || p?.id === ctx.hunterUid) ?? null;
@@ -160,8 +165,6 @@ console.log("roomSub",ctx.matchId);
 
         if (ev.type === 'tag') {
 
-          // NEW: invulnérabilité visible côté chasseur (fallback global)
-          ctx.hunterIFrameUntilMs = Date.now() + GAME_CONSTANTS.INVULN_MS;
 
 
           ctx.recentTag = {
@@ -197,11 +200,44 @@ console.log("roomSub",ctx.matchId);
     ctx.positions.positions$.subscribe((map) => {
       ctx.debug.posUids = Object.keys(map || {});
       ctx.others.clear();
+
+      // 1) anneau "moi" (victime OU chasseur en cooldown) => perf deadline
+      const mePlayer = playersById[ctx.uid];
+      if (mePlayer) {
+        const myEpoch =
+          (typeof mePlayer.iFrameUntilMs === 'number' ? mePlayer.iFrameUntilMs : null) ??
+          (typeof mePlayer.cantTagUntilMs === 'number' ? mePlayer.cantTagUntilMs : null);
+
+        if (myEpoch && myEpoch > Date.now()) {
+          const msLeft = myEpoch - Date.now();
+          ctx.invulnerableUntil = performance.now() + msLeft;
+        } else {
+          // pas de ring actif
+          ctx.invulnerableUntil = 0;
+        }
+      }
+
+      // 2) anneau "autres" — on passe iFrameUntilMs = iFrameUntilMs || cantTagUntilMs
       for (const [id, p] of Object.entries(map || {})) {
         if (id === ctx.uid) continue; // garde aussi les bots (ids préfixés "bot-")
-        if ((p as any)?.x == null || (p as any)?.y == null) continue;
-        ctx.others.set(id, { x: (p as any).x, y: (p as any).y });
+        const pos: any = p as any;
+        if (pos?.x == null || pos?.y == null) continue;
+
+        const pl = playersById[id];
+        const ringEpoch =
+          (pl && typeof pl.iFrameUntilMs === 'number' ? pl.iFrameUntilMs : null) ??
+          (pl && typeof pl.cantTagUntilMs === 'number' ? pl.cantTagUntilMs : null);
+
+        ctx.others.set(id, {
+          x: pos.x,
+          y: pos.y,
+          // ton renderer lit déjà "iFrameUntilMs" pour dessiner l'anneau
+          iFrameUntilMs: ringEpoch && ringEpoch > Date.now() ? ringEpoch : undefined,
+          // Optionnel si tu veux distinguer visuellement:
+          // ringKind: (pl?.iFrameUntilMs ? 'victim' : (pl?.cantTagUntilMs ? 'hunter' : null)),
+        });
       }
+
       ctx.cd.markForCheck();
     });
 

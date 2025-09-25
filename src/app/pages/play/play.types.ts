@@ -7,7 +7,7 @@ import { MatchService } from './match.service';
 import { RoomService } from '../room/room.service';
 import { BotService } from './bot.service';
 
-import { Pos } from './play.models';
+import { OtherPos, Pos } from './play.models';
 import { PlayRenderer } from './play.renderer';
 import { SpawnCoordService } from '../../services/spawn-coord.service';
 import { Subscription } from 'rxjs';
@@ -48,7 +48,7 @@ export interface PlayCtx {
   hunterUid: string | null;
   me: Pos;
   keys: Set<string>;
-  others: Map<string, Pos>;
+  others: Map<string, OtherPos>;
   lastMoveAt: number;
   lastTagMs: number;
   invulnerableUntil: number;

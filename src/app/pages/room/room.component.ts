@@ -139,19 +139,9 @@ export class RoomComponent implements OnInit, OnDestroy {
         shareReplay({ bufferSize: 1, refCount: true })
       );
 
-      this.players$ = combineLatest([authReady$, roomId$]).pipe(
-        switchMap(([_, id]) => this.roomSvc.players$(id)),
-        startWith([] as Player[]),
-        inZone(this.zone),
-        shareReplay({ bufferSize: 1, refCount: true })
-      );
+      this.players$ = this.roomSvc.players$(this.roomId)
 
-      this.room$ = combineLatest([authReady$, roomId$]).pipe(
-        switchMap(([_, id]) => this.roomSvc.room$(id)),
-        startWith(null as RoomDoc | null),
-        inZone(this.zone),
-        shareReplay({ bufferSize: 1, refCount: true })
-      );
+      this.room$ = this.roomSvc.room$(this.roomId)
 
       const uid = this.auth.currentUser?.uid ?? '';
       this.isOwner$ = this.room$.pipe(
@@ -180,10 +170,7 @@ export class RoomComponent implements OnInit, OnDestroy {
             ...p,
             roleResolved: (p.role ?? roles[p.uid] ?? null) as PlayerVM['roleResolved'],
           }));
-        }),
-        startWith([] as PlayerVM[]),
-        inZone(this.zone),
-        shareReplay({ bufferSize: 1, refCount: true })
+        })
       );
     });
 
@@ -204,6 +191,8 @@ export class RoomComponent implements OnInit, OnDestroy {
     // 4) Navigation auto vers /play quand la partie démarre
     this.subs.add(
        this.room$.subscribe(r => {
+        console.log("Room",r);
+        
             if (!r) return;
 
             const m = (r as any).mode;
