@@ -99,7 +99,7 @@
             <div matListItemTitle class="player-line">
               <span class="name">{{ p.displayName }}</span>
 
-             <!-- Badge de rôle, compact et explicite -->
+              <!-- Badge de rôle, compact et explicite -->
               @if (p.roleResolved === 'chasseur') {
                 <span class="role-chip role-chip--hunter" matTooltip="Rôle du joueur">
                   <mat-icon fontSet="material-symbols-outlined" class="chip-ic">target</mat-icon>
@@ -116,6 +116,20 @@
                 <span class="ready ml-2" title="Prêt">✅ prêt</span>
               } @else {
                 <span class="not-ready ml-2" title="Pas prêt">⏳</span>
+              }
+            </div>
+
+            <!-- Bouton (owner seulement) : toggle chasseur pour ce joueur -->
+            <div matListItemMeta>
+              @if (isOwner$ | async) {
+                <button
+                  mat-icon-button
+                  (click)="onToggleHunter(p.uid, p.roleResolved === 'chasseur')"
+                  [matTooltip]="(p.roleResolved === 'chasseur') ? 'Rendre le rôle de chasseur au propriétaire' : 'Définir comme chasseur'">
+                  <mat-icon fontSet="material-symbols-outlined">
+                    {{ (p.roleResolved === 'chasseur') ? 'swap_horiz' : 'gps_fixed' }}
+                  </mat-icon>
+                </button>
               }
             </div>
           </mat-list-item>

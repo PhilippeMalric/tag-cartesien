@@ -13,7 +13,7 @@ import { FieldValue } from "firebase-admin/firestore";
  * - iFrameUntilMs  : invulnérabilité (ms) jusqu’à …
  */
 const HUNTER_COOLDOWN_MS = 1000; // 1s entre deux tags validés par le même chasseur
-const VICTIM_IFRAME_MS = 1500; // 1.5s d’invulnérabilité pour la victime infectée
+const VICTIM_IFRAME_MS = 1000; // 1.5s d’invulnérabilité pour la victime infectée
 const infection = {
     async onTag({ db, matchId, hunterUid, victimUid, now, room, players }) {
         // Références utiles

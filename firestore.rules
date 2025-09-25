@@ -3,7 +3,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    /* Helpers */
+    /* ── Helpers ─────────────────────────────────────────────── */
     function isSignedIn() {
       return request.auth != null;
     }
@@ -16,71 +16,135 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/rooms/$(roomId)/players/$(uid));
     }
 
-    // Owner défini UNIQUEMENT par l'état courant (resource), pas par la requête
+    // Owner défini à partir de l'état courant (resource), jamais à partir de la requête
     function isOwner(roomId) {
       return isSignedIn() && roomRef(roomId).data.ownerUid == request.auth.uid;
     }
 
-    // Accepte 'chasseur' (FR) OU 'hunter' (EN) pour compat
+    // Accepte 'chasseur' (FR) OU 'hunter' (EN) (compat), en protégeant roles null/absent
     function isHunter(roomId, uid) {
       let p = playerRef(roomId, uid);
       let roleFromPlayer = p.exists() ? p.data.role : null;
-      let roleFromMap = roomRef(roomId).data.roles[uid];
+      let rolesMap = roomRef(roomId).data.roles;
+      let roleFromMap = rolesMap != null ? rolesMap[uid] : null;
       return roleFromPlayer == 'chasseur' || roleFromPlayer == 'hunter'
           || roleFromMap    == 'chasseur' || roleFromMap    == 'hunter';
     }
 
-    // Autoriser uniquement certaines clés à changer (pour UPDATE)
+    // Pour UPDATE seulement (resource existe)
     function onlyAllowedKeysChanged(allowedKeys) {
       return request.resource.data.diff(resource.data).changedKeys().hasOnly(allowedKeys);
     }
 
-    // Vérifie que 'ownerUid' ne change JAMAIS après création
+    // 'ownerUid' ne change JAMAIS après création (sur UPDATE)
     function ownerUnchanged() {
-      return !('ownerUid' in request.resource.data) ||
-             request.resource.data.ownerUid == resource.data.ownerUid;
+      return !('ownerUid' in request.resource.data)
+             || request.resource.data.ownerUid == resource.data.ownerUid;
     }
 
-    match /rooms/{roomId} {
+    // Validation CREATE profil /users/{uid}
+    function userCreateValid() {
+      let allowed = ['displayName', 'photoURL', 'updatedAt'];
+      return request.resource.data.keys().hasOnly(allowed);
+    }
+    // Validation UPDATE profil /users/{uid}
+    function userUpdateValid() {
+      let allowed = ['displayName', 'photoURL', 'updatedAt'];
+      return request.resource.data.keys().hasOnly(allowed)
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowed);
+    }
 
-      // Lecture par tout utilisateur authentifié
+    // Validation CREATE player /rooms/{roomId}/players/{uid}
+    function playerCreateValid() {
+      let allowed = ['uid', 'displayName', 'x', 'y', 'ready', 'lastUpdate', 'isConnected', 'role'];
+      return request.resource.data.keys().hasOnly(allowed);
+    }
+    // Validation UPDATE player
+    function playerUpdateValid() {
+      let allowed = ['uid', 'displayName', 'x', 'y', 'ready', 'lastUpdate', 'isConnected', 'role'];
+      return request.resource.data.keys().hasOnly(allowed)
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(allowed);
+    }
+
+   
+
+    function eventCreateValid() {
+      // Autorisés au NIVEAU TOP-LEVEL de l'event
+      // Si tu ajoutes d'autres champs top-level (ex: id, roomId), ajoute-les ici.
+      let allowed = ['type', 'actorUid', 'targetUid', 'payload', 'createdAt'];
+
+      // Liste des types valides
+      let types   = ['tag', 'join', 'leave', 'move', 'modeChange'];
+
+      // 1) Clés top-level : uniquement celles de "allowed"
+      // 2) Type valide : utiliser hasAny() pour les arrays (et PAS "in")
+      // 3) L'acteur doit être l'utilisateur courant
+      return request.resource.data.keys().hasOnly(allowed)
+          && types.hasAny([request.resource.data.type])
+          && request.resource.data.actorUid == request.auth.uid;
+    }
+
+
+    /* ── /users/{uid} ────────────────────────────────────────── */
+    match /users/{uid} {
       allow read: if isSignedIn();
 
-      // Création: seul le futur owner peut créer (ownerUid doit = auth.uid)
-      allow create: if isSignedIn() 
+      // CREATE: pas de diff(resource.data) ici
+      allow create: if isSignedIn()
+                    && request.auth.uid == uid
+                    && userCreateValid();
 
-      // Mise à jour: seulement l'owner ACTUEL, sans changer ownerUid,
-      // et uniquement sur la liste blanche ci-dessous
+      // UPDATE: ici resource.data existe → on peut utiliser diff
       allow update: if isSignedIn()
+                    && request.auth.uid == uid
+                    && userUpdateValid();
+    }
 
-      // Suppression: interdite (ou restreindre à l'owner si besoin)
-      allow delete: if isSignedIn();
+   /* ── /rooms/{roomId} ─────────────────────────────────────── */
+    match /rooms/{roomId} {
+      allow read: if isSignedIn();
 
-      /* Subcollection: players */
+      // CREATE: le créateur devient owner
+      allow create: if isSignedIn()
+                    && request.resource.data.ownerUid == request.auth.uid;
+
+      // UPDATE: owner actuel uniquement, sans changer ownerUid, et liste blanche
+      // + validation des valeurs si 'state' / 'mode' sont fournis
+      allow update: if isOwner(roomId)
+
+      // DELETE: owner (ou mets false si interdit)
+      allow delete: if isOwner(roomId);
+
+      /* ---- sub: players ---- */
       match /players/{uid} {
         allow read: if isSignedIn();
 
-        // le joueur peut modifier ses champs "safe"
+        // Le joueur peut gérer son doc ; le owner peut gérer n'importe quel player
         allow create: if isSignedIn()
-                     
+                      && (request.auth.uid == uid || isOwner(roomId))
+                      && playerCreateValid();
+
         allow update: if isSignedIn()
-                      
+                      && (request.auth.uid == uid || isOwner(roomId))
+                      && playerUpdateValid();
 
-
-        allow delete: if isSignedIn()
+        // Suppression: owner de la room OU le joueur lui-même
+        allow delete: if isOwner(roomId) || (isSignedIn() && request.auth.uid == uid);
       }
 
-      /* Subcollection: events */
+      /* ---- sub: events ---- */
       match /events/{eventId} {
         allow read: if isSignedIn();
 
-        // Création d'un tag: uniquement par le chasseur,
-        // et avec un schéma de données strict
+        // CREATE: chasseur uniquement + schéma valide
         allow create: if isSignedIn()
-                     
+                      && isHunter(roomId, request.auth.uid)
 
-        allow update: if false; 
-        allow delete: if isSignedIn()
+        // Immutable
+        allow update: if false;
+
+        // DELETE: owner
+        allow delete: if isOwner(roomId);
       }
     }
   }

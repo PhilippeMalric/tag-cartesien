@@ -1,18 +1,16 @@
 import {
   Component, ChangeDetectionStrategy, inject, Input, OnInit, OnDestroy,
-  EnvironmentInjector, runInInjectionContext, ChangeDetectorRef, NgZone,
-  DestroyRef
+  EnvironmentInjector, runInInjectionContext, ChangeDetectorRef, NgZone, DestroyRef
 } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { AsyncPipe, CommonModule } from '@angular/common';
 import {
-  Observable, Subscription, combineLatest, of, Subject
+  Observable, Subscription, combineLatest, of, Subject, firstValueFrom
 } from 'rxjs';
 import {
   map, filter, take, shareReplay, debounceTime, distinctUntilChanged,
-  switchMap, startWith, tap
+  switchMap, startWith
 } from 'rxjs/operators';
-
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 // Material
@@ -43,6 +41,11 @@ import { MapPickerComponent } from './ui/map-picker.component';
 
 // Spawn (signals partagés)
 import { SpawnCoordService } from '../../services/spawn-coord.service';
+import { OwnerActionsService } from './owner-actions.service';
+import { RoomLogger } from './room-logger';
+import { inZone } from './in-zone.operator';
+
+// Utils (extraits pour nettoyer le composant)
 
 type HunterScope = 'all' | 'ready';
 type PlayerVM = Player & { roleResolved: Role | null };
@@ -71,7 +74,9 @@ export class RoomComponent implements OnInit, OnDestroy {
   private readonly snack    = inject(MatSnackBar);
   private readonly cdr      = inject(ChangeDetectorRef);
   private readonly zone     = inject(NgZone);
-private readonly destroyRef = inject(DestroyRef);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly ownerActions = inject(OwnerActionsService);
+
   // --- Entrées
   @Input() roomId = '';
   @Input() isOwner = false; // fallback si fourni par parent
@@ -94,28 +99,15 @@ private readonly destroyRef = inject(DestroyRef);
   public pickingHunter = false;
   public lastPickedHunter: { uid: string; displayName?: string } | null = null;
 
-  // Logs (optionnels)
+  // Logs (public pour le template)
   public writes: string[] = [];
-  private log(msg: string) {
-    const t = new Date().toLocaleTimeString();
-    this.writes = [`[${t}] ${msg}`, ...this.writes].slice(0, 30);
-  }
 
-  // Sauvegarde spawn (debounced)
-  private saveSpawn$ = new Subject<{x:number;y:number}>();
+  // Internes
+  private logger = new RoomLogger(w => (this.writes = w));
+  private saveSpawn$ = new Subject<{ x: number; y: number }>();
   private subs = new Subscription();
 
-  // ---- Helper: ramener un flux "dans la zone" (déclenche CD OnPush) ----
-  private inZone<T>() {
-    return (source: Observable<T>) =>
-      new Observable<T>(observer =>
-        source.subscribe({
-          next: v => this.zone.run(() => observer.next(v)),
-          error: e => this.zone.run(() => observer.error(e)),
-          complete: () => this.zone.run(() => observer.complete()),
-        })
-      );
-  }
+  private log(msg: string) { this.logger.log(msg); }
 
   async ngOnInit(): Promise<void> {
     if (!this.roomId) this.roomId = this.route.snapshot.paramMap.get('id') ?? '';
@@ -150,14 +142,14 @@ private readonly destroyRef = inject(DestroyRef);
       this.players$ = combineLatest([authReady$, roomId$]).pipe(
         switchMap(([_, id]) => this.roomSvc.players$(id)),
         startWith([] as Player[]),
-        this.inZone(),
+        inZone(this.zone),
         shareReplay({ bufferSize: 1, refCount: true })
       );
 
       this.room$ = combineLatest([authReady$, roomId$]).pipe(
         switchMap(([_, id]) => this.roomSvc.room$(id)),
         startWith(null as RoomDoc | null),
-        this.inZone(),
+        inZone(this.zone),
         shareReplay({ bufferSize: 1, refCount: true })
       );
 
@@ -190,18 +182,14 @@ private readonly destroyRef = inject(DestroyRef);
           }));
         }),
         startWith([] as PlayerVM[]),
-        this.inZone(),
+        inZone(this.zone),
         shareReplay({ bufferSize: 1, refCount: true })
       );
     });
 
     this.playersVM$
-        .pipe(takeUntilDestroyed(this.destroyRef))
-        .subscribe(() => {
-          // OnPush : force un cycle de détection pour ce composant
-          this.cdr.detectChanges();
-        });
-
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.cdr.detectChanges());
 
     // 3) Suivre mon état ready (maj locale)
     this.subs.add(
@@ -215,16 +203,17 @@ private readonly destroyRef = inject(DestroyRef);
 
     // 4) Navigation auto vers /play quand la partie démarre
     this.subs.add(
-      this.room$.subscribe(r => {
-        if (!r) return;
-        const m = (r as any).mode as any;
-        if (m && this.mode !== m) this.mode = m;
+       this.room$.subscribe(r => {
+            if (!r) return;
 
-        if (r.state === 'running' || r.state === 'in-progress') {
-          this.log(`NAV → /play/${this.roomId}`);
-          this.router.navigate(['/play', this.roomId]);
-        }
-      })
+            const m = (r as any).mode;
+            if (m && this.mode !== m) this.mode = m;
+
+            if (r.state === 'running' || r.state === 'in-progress') {
+              this.log(`NAV → /play/${this.roomId}`);
+              this.router.navigate(['/play', this.roomId]);
+            }
+          })
     );
 
     // 5) Sauvegarde spawn debounce
@@ -239,7 +228,7 @@ private readonly destroyRef = inject(DestroyRef);
           try {
             await this.roomSvc.setMySpawn(this.roomId, uid, xy);
             this.log(`FS setMySpawn(${xy.x}, ${xy.y})`);
-          } catch (e:any) {
+          } catch (e: any) {
             this.log(`setMySpawn — ERREUR: ${e?.message || e}`);
           }
         })
@@ -286,7 +275,8 @@ private readonly destroyRef = inject(DestroyRef);
     if (this.pickingHunter) return;
     this.pickingHunter = true;
     try {
-      const picked = await this.chooseRandomHunter(scope);
+      const players = await firstValueFrom(this.playersVM$);
+      const picked = await this.ownerActions.applyRandomHunter(this.roomId, players ?? [], scope);
       this.lastPickedHunter = picked || null;
       const name = picked?.displayName || picked?.uid || 'inconnu';
       this.snack.open(`Chasseur choisi : ${name}`, 'OK', { duration: 2500 });
@@ -322,41 +312,36 @@ private readonly destroyRef = inject(DestroyRef);
     this.saveSpawn$.next(xy);
   }
 
-  // --- Détails privés ---
-  private async chooseRandomHunter(among: 'all' | 'ready' = 'all') {
+  /** Bouton toggle chasseur (owner) */
+  public async onToggleHunter(targetUid: string, isCurrentlyHunter: boolean): Promise<void> {
+    const roomId = this.roomId;
+    if (!roomId) return;
+
+    const getAllPlayers = async () => {
+      const vm = await firstValueFrom(this.playersVM$);
+      return (vm ?? []).map(p => ({ uid: p.uid, displayName: p.displayName, ready: (p as any).ready, role: p.roleResolved })) as any;
+    };
+
+    const getCurrentRoles = async () => {
+      const r = await firstValueFrom(this.room$);
+      return (r?.roles ?? null) as Record<string, 'chasseur' | 'chassé'> | null;
+    };
+
     try {
-      const list = await combineLatest([this.playersVM$]).pipe(
-        map(([arr]) => arr),
-        filter(arr => Array.isArray(arr) && arr.length > 0),
-        take(1)
-      ).toPromise();
+      const newRole = await this.ownerActions.toggleHunterMulti(
+        roomId,
+        targetUid,
+        isCurrentlyHunter,
+        getAllPlayers,
+        getCurrentRoles
+      );
 
-      const allPlayers = (list ?? []).filter(p => p?.uid && !String(p.uid).startsWith('bot-'));
-      const readyPlayers = allPlayers.filter(p => !!p.ready);
-
-      let pool = allPlayers;
-      if (among === 'ready') pool = readyPlayers.length ? readyPlayers : allPlayers;
-
-      if (!pool.length) {
-        this.log(`Owner: tirage chasseur impossible (joueurs: ${allPlayers.length}, prêts: ${readyPlayers.length}, pool: ${among})`);
-        throw new Error('Aucun joueur éligible au tirage.');
-      }
-
-      const idx = Math.floor(Math.random() * pool.length);
-      const hunterUid = pool[idx].uid;
-
-      const roles: Record<string, 'chasseur' | 'chassé'> = {};
-      for (const p of allPlayers) roles[p.uid] = (p.uid === hunterUid ? 'chasseur' : 'chassé');
-
-      await this.roomSvc.applyRoles(this.roomId, roles);
-      this.log(`Owner: chasseur tiré au sort → ${hunterUid} (joueurs: ${allPlayers.length}, prêts: ${readyPlayers.length}, pool: ${among})`);
-
-      const chosen = pool[idx];
-      return { uid: chosen.uid, displayName: chosen.displayName };
+      const msg = (newRole === 'chasseur') ? 'Défini comme chasseur' : 'Rendu chassé';
+      this.snack.open(msg, 'OK', { duration: 2000 });
+      this.log(`Owner: toggle hunter → ${targetUid} = ${newRole}`);
     } catch (e: any) {
-      this.log(`Owner: tirage chasseur — ERREUR: ${e?.message || e}`);
-      throw e;
+      this.snack.open(String(e?.message || e), 'OK', { duration: 3000 });
+      this.log(`toggleHunterMulti — ERREUR: ${e?.message || e}`);
     }
   }
 }
-

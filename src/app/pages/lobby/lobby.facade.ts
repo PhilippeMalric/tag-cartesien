@@ -9,7 +9,7 @@ import {
   Firestore, CollectionReference,
   collection, collectionData, doc, setDoc, query, orderBy, limit
 } from '@angular/fire/firestore';
-import { serverTimestamp as fsServerTimestamp } from 'firebase/firestore';
+import { serverTimestamp as fsServerTimestamp, serverTimestamp } from 'firebase/firestore';
 import { Database, ref, set as rtdbSet } from '@angular/fire/database';
 
 // Services
@@ -116,20 +116,20 @@ export class LobbyFacade {
     }
 
     try {
-      // Profil Firebase Auth
+      // 1) Profil Firebase Auth
       await updateProfile(user, { displayName: safe });
 
-      // Doc user (utile pour d’autres UIs)
+      // 2) Doc Firestore /users/{uid}
       await setDoc(
-        doc(this.db, `users/${user.uid}`),
-        { displayName: safe, updatedAt: new Date().toISOString() },
+        doc(this.db, 'users', user.uid),
+        { displayName: safe, updatedAt: serverTimestamp() },
         { merge: true }
       );
 
       this.snack.open('Nom mis à jour', 'OK', { duration: 2000 });
     } catch (e: any) {
       console.error('[saveDisplayName]', e);
-      this.snack.open(`Erreur lors de la mise à jour du nom`, 'OK', { duration: 3000 });
+      this.snack.open('Erreur lors de la mise à jour du nom', 'OK', { duration: 3000 });
     }
   }
 

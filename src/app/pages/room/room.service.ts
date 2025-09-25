@@ -189,6 +189,42 @@ export class RoomService {
     await updateDoc(ref, { state, updatedAt: serverTimestamp() });
   }
 
+  /** Seul le owner devrait appeler cette méthode (les rules le garantissent) */
+  async setHunter(roomId: string, targetUid: string): Promise<void> {
+    const roomRef = doc(this.fs, 'rooms', roomId);
+    // Met à jour hunter + rôles (facultatif)
+    await updateDoc(roomRef, {
+      hunterUid: targetUid,
+      [`roles.${targetUid}`]: 'hunter',
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  /** Fallback si le chasseur quitte: remettre au owner */
+  async ensureHunter(roomId: string, ownerUid: string, currentHunterUid: string | null, players: Player[]): Promise<void> {
+    if (currentHunterUid && players.some(p => p.uid === currentHunterUid)) return;
+    await this.setHunter(roomId, ownerUid);
+  }
+
+  /** Met le rôle d'un joueur (merge dans roles.<uid>) */
+  async setRole(roomId: string, uid: string, role: 'chasseur' | 'chassé'): Promise<void> {
+    const roomRef = doc(this.fs, 'rooms', roomId);
+    await updateDoc(roomRef, {
+      [`roles.${uid}`]: role,
+      updatedAt: serverTimestamp(),
+    } as any);
+  }
+
+  /** Écrit plusieurs rôles d'un coup (merge partiel) */
+  async setRoles(roomId: string, roles: Record<string, 'chasseur' | 'chassé'>): Promise<void> {
+    const roomRef = doc(this.fs, 'rooms', roomId);
+    const payload: any = { updatedAt: serverTimestamp() };
+    for (const [uid, role] of Object.entries(roles)) {
+      payload[`roles.${uid}`] = role;
+    }
+    await updateDoc(roomRef, payload);
+  }
+
 
 
 }
