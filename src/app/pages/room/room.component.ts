@@ -166,10 +166,32 @@ export class RoomComponent implements OnInit, OnDestroy {
       this.playersVM$ = combineLatest([this.players$, this.room$]).pipe(
         map(([players, room]) => {
           const roles = (room?.roles ?? {}) as Record<string, Role | undefined>;
-          return (players ?? []).map(p => ({
+
+          // 1) Humains: docs /players + rôle résolu
+          const humans = (players ?? []).map(p => ({
             ...p,
-            roleResolved: (p.role ?? roles[p.uid] ?? null) as PlayerVM['roleResolved'],
+            roleResolved: (p.role ?? roles[p.uid] ?? null) as Role | null,
           }));
+
+          // 2) Bots: dérivés de room.roles (uids qui commencent par "bot-")
+          const humanUids = new Set(humans.map(p => p.uid));
+          const botUids = Object.keys(roles)
+            .filter(uid => uid.startsWith('bot-') && !humanUids.has(uid));
+
+          const bots = botUids.map(uid => ({
+            uid,
+            displayName: `🤖 Bot ${uid.slice(-4).toUpperCase()}`,
+            ready: true,                  // évite l’UI "⏳/✅" indéfini
+            role: roles[uid],             // pour compat template si tu l’affiches ailleurs
+            roleResolved: roles[uid] ?? null as Role | null,
+            score: 0,
+          }));
+
+          // 3) Ordonner: humains d’abord, puis bots
+          humans.sort((a, b) => (a.displayName || a.uid).localeCompare(b.displayName || b.uid));
+          bots.sort((a, b) => (a.displayName || a.uid).localeCompare(b.displayName || b.uid));
+
+          return [...humans, ...bots];
         })
       );
     });

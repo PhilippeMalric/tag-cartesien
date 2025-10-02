@@ -25,8 +25,11 @@
     <mat-chip>Score: {{ myScore }}<ng-container *ngIf="targetScore"> / {{ targetScore }}</ng-container></mat-chip>
     <mat-chip *ngIf="timeLeft >= 0">Temps: {{ timeLeft }}s</mat-chip>
   </mat-chip-set>
- 
-</mat-toolbar>
+    @if (isOwnerNow) {
+      <button mat-button (click)="spawnBots(5)">Spawn 5 bots</button>
+      <button mat-button (click)="stopBots()">Stop bots</button>
+    }
+  </mat-toolbar>
 @if (showRecentTag) {
   <div class="tag-toast" role="status" aria-live="polite">
     <mat-icon fontSet="material-symbols-outlined">bolt</mat-icon>

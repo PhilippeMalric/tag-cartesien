@@ -97,7 +97,10 @@
             <mat-icon matListItemIcon fontSet="material-symbols-outlined">person</mat-icon>
 
             <div matListItemTitle class="player-line">
-              <span class="name">{{ p.displayName }}</span>
+              <span class="name">
+                {{ p.displayName }}
+                @if (p.uid?.startsWith?.('bot-')) { <small class="ml-2">🤖</small> }
+              </span>
 
               <!-- Badge de rôle, compact et explicite -->
               @if (p.roleResolved === 'chasseur') {

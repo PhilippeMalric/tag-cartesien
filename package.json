@@ -1,15 +1,30 @@
 {
   "name": "tag-cartesien",
   "version": "0.0.0",
+  "private": true,
+  "description": "Jeu Tag cartésien - Angular + Firebase",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
     "build": "ng build",
+    "build:prod": "ng build --configuration production",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
+
     "serve:ssr:tag-cartesien": "node dist/tag-cartesien/server/server.mjs",
-    "deploy-h":"firebase deploy --only hosting",
-    "emu":"firebase emulators:start --only firestore,database,auth,functions"
+    "build:ssr": "ng build && ng run tag-cartesien:server",
+
+    "emu": "firebase emulators:start --only firestore,database,auth,functions",
+    "emu:clean": "rimraf .firebase && rimraf emulator-data",
+    "serve:dev": "concurrently \"npm:emu\" \"wait-on tcp:4000 tcp:8080 tcp:9000 tcp:9099 tcp:5001 && ng serve\"",
+    "play": "npm run serve:dev",
+    "seed": "node scripts/seed.mjs",
+
+    "deploy": "ng build && firebase deploy --only hosting",
+    "deploy:db": "firebase deploy --only database",
+    "deploy:rules": "firebase deploy --only firestore:rules,database",
+    "deploy:functions": "firebase deploy --only functions",
+    "deploy:all": "ng build && firebase deploy"
   },
   "prettier": {
     "printWidth": 100,
@@ -23,7 +38,6 @@
       }
     ]
   },
-  "private": true,
   "dependencies": {
     "@angular/animations": "^20.3.0",
     "@angular/cdk": "^20.2.3",
@@ -50,6 +64,9 @@
     "@types/express": "^5.0.1",
     "@types/jasmine": "~5.1.0",
     "@types/node": "^20.17.19",
+    "concurrently": "^9.0.0",
+    "wait-on": "^7.2.0",
+    "rimraf": "^6.0.1",
     "jasmine-core": "~5.9.0",
     "karma": "~6.4.0",
     "karma-chrome-launcher": "~3.2.0",
@@ -57,6 +74,10 @@
     "karma-jasmine": "~5.1.0",
     "karma-jasmine-html-reporter": "~2.1.0",
     "sass": "^1.92.1",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "firebase-tools": "^13.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
