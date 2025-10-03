@@ -2,11 +2,9 @@ import {
   Injectable, EnvironmentInjector, DestroyRef, inject, runInInjectionContext
 } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
+import { Observable, Subject, Subscription, combineLatest, firstValueFrom, of } from 'rxjs';
 import {
-  Observable, Subject, Subscription, combineLatest, firstValueFrom, of
-} from 'rxjs';
-import {
-  debounceTime, distinctUntilChanged, filter, map, shareReplay, take
+  debounceTime, distinctUntilChanged, filter, map, shareReplay, take, startWith, auditTime
 } from 'rxjs/operators';
 
 // Auth
@@ -23,6 +21,31 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 // Spawn (signals partagés)
 import { SpawnCoordService } from '../../services/spawn-coord.service';
+
+// Roles util (nouveau)
+import { toRoleMap } from './roles.util';
+
+// Helpers de stabilité/comparaison légère
+const byUid = (a: any, b: any) => (a?.uid || '').localeCompare(b?.uid || '');
+function shallowEqPlayers(a: Player[] = [], b: Player[] = []) {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const pa = a[i], pb = b[i];
+    if (pa.uid !== pb.uid || pa.ready !== pb.ready || pa.role !== pb.role || pa.displayName !== pb.displayName) {
+      return false;
+    }
+  }
+  return true;
+}
+function shallowEqRoom(a: RoomDoc | null, b: RoomDoc | null) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  // Compare seulement ce qu’on consomme ici
+  const keysA = Object.keys(toRoleMap(a.roles)).join('|');
+  const keysB = Object.keys(toRoleMap(b.roles)).join('|');
+  return a.id === b.id && a.state === b.state && a.mode === b.mode && a.ownerUid === b.ownerUid && keysA === keysB;
+}
 
 @Injectable({ providedIn: 'root' })
 export class RoomFacade {
@@ -47,7 +70,8 @@ export class RoomFacade {
   room$:    Observable<RoomDoc | null> = of(null);
 
   // Dérivés
-  playersVM$:   Observable<PlayerVM[]> = of([]);
+  /** NOTE: `PlayerVM[] | null` — `null` = loading (tant que room n’a pas émis) */
+  playersVM$:   Observable<PlayerVM[] | null> = of(null);
   isOwner$!:    Observable<boolean>;
   canStart$!:   Observable<boolean>;
   readyCount$!: Observable<number>;
@@ -78,13 +102,13 @@ export class RoomFacade {
     return this.route.snapshot.queryParamMap.get('noAutoPlay') === '1';
   }
 
-  /** Est-ce qu'on est actuellement sur la page room de CETTE room ? */
+  /** Est-ce qu'on est sur la page room de CETTE room ? */
   private isOnRoomPage(): boolean {
     const url = this.router.url.split('?')[0];
     return url.startsWith(`/room/${this._roomId}`);
   }
 
-  /** Navigation vers le lobby (utilisée par le template) */
+  /** Navigation vers le lobby */
   public goLobby(): void {
     this.router.navigate(['/lobby']);
   }
@@ -114,18 +138,19 @@ export class RoomFacade {
       }
     });
 
-    // Streams
+    // Streams + stabilisation
     runInInjectionContext(this.env, () => {
-      this.players$ = this.roomSvc.players$(this._roomId)
-        .pipe(shareReplay({ bufferSize: 1, refCount: true }));
-
+     this.players$ = this.roomSvc.players$(this._roomId)
       this.room$ = this.roomSvc.room$(this._roomId)
-        .pipe(shareReplay({ bufferSize: 1, refCount: true }));
 
       const uid = this.auth.currentUser?.uid ?? '';
-      this.isOwner$ = this.room$.pipe(map(r => !!r && r.ownerUid === uid));
+      this.isOwner$ = this.room$.pipe(
+        map(r => !!r && r.ownerUid === uid),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
 
       this.canStart$ = combineLatest([this.players$, this.room$]).pipe(
+        auditTime(16),
         map(([players, room]) =>
           !!room &&
           room.state !== 'running' &&
@@ -137,25 +162,53 @@ export class RoomFacade {
         shareReplay({ bufferSize: 1, refCount: true })
       );
 
+      // *** Anti-flicker: tant que room == null => VM == null (état "loading")
       this.playersVM$ = combineLatest([this.players$, this.room$]).pipe(
+       
         map(([players, room]) => {
-          const roles = (room?.roles ?? {}) as Record<string, Role | undefined>;
-          return (players ?? []).map(p => ({
+
+          console.log('playersVM$', { players, room });
+          
+          if (!room) return null;
+
+          const roles = toRoleMap(room.roles);
+
+          // Humains: docs /players + rôle résolu
+          const humans = (players ?? []).map(p => ({
             ...p,
             roleResolved: (p.role ?? roles[p.uid] ?? null) as PlayerVM['roleResolved'],
           }));
+
+          // (Bots optionnels : à réactiver si nécessaire)
+          // const humanUids = new Set(humans.map(p => p.uid));
+          // const botUids = Object.keys(roles).filter(uid => uid.startsWith('bot-') && !humanUids.has(uid));
+          // const bots: PlayerVM[] = botUids.map(uid => ({
+          //   uid, displayName: `🤖 Bot ${uid.slice(-4).toUpperCase()}`, ready: true,
+          //   role: roles[uid], roleResolved: (roles[uid] ?? null) as PlayerVM['roleResolved'], score: 0
+          // }));
+
+          humans.sort((a, b) => (a.displayName || a.uid).localeCompare(b.displayName || b.uid));
+          return humans; // ou: [...humans, ...bots]
         }),
         shareReplay({ bufferSize: 1, refCount: true })
       );
 
-      this.readyCount$ = this.players$.pipe(map(ps => ps.filter(p => !!p.ready).length));
-      this.totalCount$ = this.players$.pipe(map(ps => ps.length));
+      this.readyCount$ = this.players$.pipe(
+        map(ps => ps.filter(p => !!p.ready).length),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
+
+      this.totalCount$ = this.players$.pipe(
+        map(ps => ps.length),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
 
       this.startHint$ = combineLatest([this.players$, this.room$]).pipe(
+        auditTime(16),
         map(([players, room]) => {
-          if (!room) return 'Salle introuvable.';
+          if (!room) return 'Chargement de la salle…';
           if (room.state === 'running' || room.state === 'in-progress') return 'La partie est déjà en cours.';
-          if (!players?.length) return 'Aucun joueur.';
+          if (!players?.length) return 'Aucun joueur pour le moment…';
           const notReady = players.filter(p => !p.ready).map(p => p.displayName || p.uid);
           return notReady.length ? `En attente: ${notReady.join(', ')}` : '';
         }),
@@ -178,7 +231,7 @@ export class RoomFacade {
       this.room$.subscribe(r => {
         if (!r) return;
 
-        // synchro du mode local
+        // Synchro du mode local
         const m = (r as any).mode as any;
         if (m && this.mode !== m) this.mode = m;
 
@@ -228,10 +281,7 @@ export class RoomFacade {
     const uid = this.auth.currentUser?.uid;
     if (!uid) return;
     try {
-      await this.roomSvc.toggleReady(this._roomId, !this.myReady ? this.auth.currentUser!.uid : this.auth.currentUser!.uid, !this.myReady);
-      // La ligne ci-dessus est équivalente à: await this.roomSvc.toggleReady(this._roomId, uid, !this.myReady);
-      // Je laisse explicitement uid ci-dessous pour la lisibilité:
-      // await this.roomSvc.toggleReady(this._roomId, uid, !this.myReady);
+      await this.roomSvc.toggleReady(this._roomId, uid, !this.myReady);
       this.log(`FS toggleReady(${!this.myReady})`);
       this.myReady = !this.myReady; // MAJ optimiste
     } catch (e: any) {
@@ -288,16 +338,12 @@ export class RoomFacade {
 
   // === Détails privés ===
 
-  /**
-   * Tirage chasseur depuis l'état courant (playersVM$)
-   * scope: 'all' | 'ready' (fallback auto sur all si aucun prêt)
-   */
   private async chooseRandomHunter(scope: HunterScope = 'all') {
     try {
       const list = await firstValueFrom(
         this.playersVM$.pipe(filter(arr => Array.isArray(arr) && arr.length > 0), take(1))
       );
-
+      if(list === null) throw new Error('Liste de joueurs introuvable.');
       const allPlayers = list.filter(p => p?.uid && !String(p.uid).startsWith('bot-'));
       const readyPlayers = allPlayers.filter(p => !!p.ready);
 
@@ -305,18 +351,16 @@ export class RoomFacade {
       if (scope === 'ready') pool = readyPlayers.length ? readyPlayers : allPlayers;
 
       if (!pool.length) {
-        this.log(`Owner: tirage chasseur impossible (joueurs: ${allPlayers.length}, prêts: ${readyPlayers.length}, pool: ${scope})`);
         throw new Error('Aucun joueur éligible au tirage.');
       }
 
       const idx = Math.floor(Math.random() * pool.length);
       const hunterUid = pool[idx].uid;
 
-      const roles: Record<string, 'chasseur' | 'chassé'> = {};
+      const roles: Record<string, Exclude<Role, null>> = {};
       for (const p of allPlayers) roles[p.uid] = (p.uid === hunterUid ? 'chasseur' : 'chassé');
 
       await this.roomSvc.applyRoles(this._roomId, roles);
-      this.log(`Owner: chasseur tiré au sort → ${hunterUid} (joueurs: ${allPlayers.length}, prêts: ${readyPlayers.length}, pool: ${scope})`);
 
       const chosen = pool[idx];
       return { uid: chosen.uid, displayName: chosen.displayName };

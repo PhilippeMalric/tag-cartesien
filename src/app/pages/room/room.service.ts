@@ -6,9 +6,10 @@ import {
   collection, getDocs, collectionData, docData,
   serverTimestamp,
   query,
-  where
+  where,
+  getDocFromCache
 } from '@angular/fire/firestore';
-import { Observable, defer, map } from 'rxjs';
+import { Observable, defer, map, tap } from 'rxjs';
 import { Player } from '../room/player.model'; // Assure-toi que Player { uid: string; ... }
 import { Mode, RoomDoc } from '../../models/room.model';
 
@@ -24,12 +25,17 @@ export class RoomService {
     private env: EnvironmentInjector,
     private fs: Firestore,
   ) {}
+  private ensureInFlight = new Map<string, Promise<void>>();
 
   /** Flux temps réel du document room */
   room$(roomId: string): Observable<RoomDoc | null> {
     return defer(() =>
       runInInjectionContext(this.env, () => {
-        return docData(doc(this.fs, `rooms/${roomId}`)) as Observable<RoomDoc>;
+        console.log(roomId);
+        
+        return docData(doc(this.fs, `rooms/${roomId}`)).pipe(tap((data:any)=>{console.log('room$',roomId,data);
+
+        })) as Observable<RoomDoc>;
       })
     );
   }
@@ -51,17 +57,39 @@ export class RoomService {
     return doc(this.fs, `rooms/${roomId}/players/${uid}`);
   }
 
-  /** Crée/merge mon doc joueur — n'écrit PAS `uid` (interdit par règles) */
-   async ensureSelfPlayerDoc(roomId: string, uid: string, displayName?: string) {
-    return runInInjectionContext(this.env, async () => {
-      const patch: any = {};
-      if (displayName && displayName.trim()) patch.displayName = displayName.trim();
-      // si pas de nom => n'écrit rien (on n’écrase pas l’existant)
-      if (Object.keys(patch).length) {
-        await setDoc(this.playerRef(roomId, uid), patch, { merge: true });
-      }
-    });
-  }
+  ensureSelfPlayerDoc(roomId: string, uid: string, displayName?: string): Promise<void> {
+      const key = `${roomId}/${uid}`;
+      const name = (displayName ?? '').trim();
+      if (!name) return Promise.resolve(); // rien à écrire
+
+      // si déjà en cours, on réutilise la même promesse
+      const inflight = this.ensureInFlight.get(key);
+      if (inflight) return inflight;
+
+      const p = runInInjectionContext(this.env, async () => {
+        const ref = this.playerRef(roomId, uid);
+
+        // 1) Lecture **cache** (synchro/rapide). Si identique → on **skip** l’écriture.
+        try {
+          const snap = await getDocFromCache(ref);
+          if (snap.exists()) {
+            const curr = (snap.data()?.['displayName'] ?? '').trim();
+            if (curr === name) return; // déjà à jour → no-op
+          }
+        } catch {
+          // pas dans le cache : on ne fait rien, on passera à l'écriture optimiste
+        }
+
+        // 2) Écriture uniquement si nécessaire (merge)
+        await setDoc(ref, { displayName: name }, { merge: true });
+      })
+      .finally(() => {
+        this.ensureInFlight.delete(key);
+      });
+
+      this.ensureInFlight.set(key, p);
+      return p;
+    }
 
   /** Met à jour uniquement le champ `ready` de ce joueur */
   async toggleReady(roomId: string, uid: string, ready: boolean) {

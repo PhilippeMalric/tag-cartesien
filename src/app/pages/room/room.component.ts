@@ -119,12 +119,17 @@ export class RoomComponent implements OnInit, OnDestroy {
       const uid = this.auth.currentUser!.uid;
       const displayName = this.auth.currentUser?.displayName || 'Joueur';
       try {
-        await this.roomSvc.ensureSelfPlayerDoc(this.roomId, uid, displayName);
+        void this.roomSvc.ensureSelfPlayerDoc(this.roomId, uid, displayName)
+          .catch(e => this.log?.(`ensureSelfPlayerDoc error: ${e?.message || e}`));
         this.log(`FS ensureSelfPlayerDoc(${this.roomId}, ${uid})`);
       } catch (e: any) {
         this.log(`FS ensureSelfPlayerDoc — ERREUR: ${e?.message || e}`);
       }
     });
+
+
+    console.log("RoomComponent init 2",this.roomId,this.isOwner);
+    
 
     // 2) Flux réactifs et *dans la zone* (avec valeurs initiales)
     runInInjectionContext(this.env, () => {
