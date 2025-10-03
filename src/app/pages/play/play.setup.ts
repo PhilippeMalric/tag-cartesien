@@ -89,7 +89,7 @@ ctx.roomSvc.getMode$(ctx.matchId).subscribe((data:any)=>{
             ctx.me.x = rnd.x;
             ctx.me.y = rnd.y;
           }
-          ctx.positions.writeSelf(ctx.matchId, ctx.uid, ctx.me.x, ctx.me.y);
+          ctx.positions.writeSelf(ctx.matchId, ctx.uid, ctx.me.x, ctx.me.y, d.role as string);
           ctx.lastMoveAt = performance.now() - moveCooldownMs();
           ctx.moveProgress = 100;
           didInitialSpawn = true;
@@ -186,7 +186,7 @@ console.log("roomSub",ctx.matchId);
               } catch {}
             });
 
-            ctx.positions.writeSelf(ctx.matchId, ctx.uid, x, y);
+            ctx.positions.writeSelf(ctx.matchId, ctx.uid, x, y,ctx.role as string);
           }
         }
       }
@@ -276,7 +276,7 @@ console.log("roomSub",ctx.matchId);
         const ny = Math.max(-50, Math.min(50, ctx.me.y + Math.round(vy * step)));
         ctx.me.x = nx;
         ctx.me.y = ny;
-        ctx.positions.writeSelf(ctx.matchId, ctx.uid, nx, ny);
+        ctx.positions.writeSelf(ctx.matchId, ctx.uid, nx, ny,ctx.role as string);
         ctx.lastMoveAt = performance.now();
       }
 

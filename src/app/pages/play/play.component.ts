@@ -19,7 +19,6 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 // Services & utils
 import { ThemeService } from '../../services/theme.service';
 import { PositionsService } from './positions.service';
-import { MatchService } from './match.service';
 import { RoomService } from '../room/room.service';
 import { BotService } from './bot.service';
 import { PlayRenderer } from './play.renderer';
@@ -32,6 +31,7 @@ import { MobileDpadComponent } from './ui/mobile-dpad.component';
 import { DragDropModule } from '@angular/cdk/drag-drop';
 import { SpawnCoordService } from '../../services/spawn-coord.service';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatchService } from './match.service';
 
 @Component({
   selector: 'app-play',

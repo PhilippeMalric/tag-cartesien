@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Database, ref, set, onValue, off, onDisconnect } from '@angular/fire/database';
 import { BehaviorSubject, combineLatest, Subscription } from 'rxjs';
 
-export type PosDTO = { x: number; y: number; t?: number; name?: string };
+export type PosDTO = { x: number; y: number; t?: number; name?: string; role?: string;  };
 
 export type Vec = { x: number; y: number };
 
@@ -29,10 +29,10 @@ export class PositionsService {
     try { onDisconnect(r).remove(); } catch {}
   }
 
-  async writeSelf(matchId: string, uid: string, x: number, y: number) {
+  async writeSelf(matchId: string, uid: string, x: number, y: number, role: string) {
     if (!matchId || !uid) return;
     const r = ref(this.db, `positions/${matchId}/${uid}`);
-    await set(r, { x, y, t: Date.now() });
+    await set(r, { x, y, t: Date.now(),role });
   }
 
   startListening(matchId: string) {
