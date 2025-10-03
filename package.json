@@ -24,7 +24,10 @@
     "deploy:db": "firebase deploy --only database",
     "deploy:rules": "firebase deploy --only firestore:rules,database",
     "deploy:functions": "firebase deploy --only functions",
-    "deploy:all": "ng build && firebase deploy"
+    "deploy:all": "ng build && firebase deploy",
+    "snapshot": "node functions/scripts/snapshot.mjs",
+    "snapshot:dated": "powershell -NoProfile -Command \"$env:OUTFILE='snapshot_{0}.txt' -f (Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'); node functions/scripts/snapshot.mjs\""
+   
   },
   "prettier": {
     "printWidth": 100,

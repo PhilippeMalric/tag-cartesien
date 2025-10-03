@@ -1,9 +1,9 @@
 // functions/src/index.ts
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { getFirestore, FieldValue, QueryDocumentSnapshot } from "firebase-admin/firestore";
+import {  onDocumentCreated } from "firebase-functions/v2/firestore";
 import { setGlobalOptions } from "firebase-functions/v2";
-import { handlers } from "./modes";
+import { handlers } from "./modes/index.js";
 
 // -----------------------------------------------------------------------------
 // Initialisation
@@ -45,11 +45,14 @@ type TagEventData = {
   y?: number;
 };
 
+
+type TagParams = { roomId: string; eventId: string };
+
 // -----------------------------------------------------------------------------
 // Trigger principal : création d'un event → traitement du tag
 // -----------------------------------------------------------------------------
 export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async (event) => {
-  const snap = event.data;
+  const snap = event["data"];
   if (!snap) return;
 
   const data = snap.data() as TagEventData;
@@ -70,7 +73,7 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
   const markerRef = eventRef.collection("_processed").doc("score");
   const claimed = await db.runTransaction(async (tx) => {
     const m = await tx.get(markerRef);
-    if (m.exists) return false; // déjà traité par une autre instance
+    if (m["exists"]) return false; // déjà traité par une autre instance
     tx.set(markerRef, { at: FieldValue.serverTimestamp() }, { merge: true });
     return true;                // réservé
   });

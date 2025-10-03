@@ -3,7 +3,7 @@ import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { setGlobalOptions } from "firebase-functions/v2";
-import { handlers } from "./modes";
+import { handlers } from "./modes/index.js";
 // -----------------------------------------------------------------------------
 // Initialisation
 // -----------------------------------------------------------------------------

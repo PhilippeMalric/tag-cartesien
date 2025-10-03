@@ -25,7 +25,10 @@
     "tag:classic":      "set GOOGLE_CLOUD_PROJECT=tag-cartesien&& set FIRESTORE_EMULATOR_HOST=127.0.0.1:8080&& tsx ./scripts/tag_classic_demo.ts",
     "tag:infection":    "set GOOGLE_CLOUD_PROJECT=tag-cartesien&& set FIRESTORE_EMULATOR_HOST=127.0.0.1:8080&& tsx ./scripts/tag_infection_all.ts",
 
-    "listen": "node scripts/room-listener.mjs"
+    "listen": "node scripts/room-listener.mjs",
+    "snapshot": "node scripts/snapshot.mjs",
+    "snapshot:dated": "powershell -NoProfile -Command \"$env:OUTFILE='snapshot_{0}.txt' -f (Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'); node scripts/snapshot.mjs\""
+   
   },
   "engines": {
     "node": "20"

@@ -1,8 +1,8 @@
 // functions/src/modes/index.ts
-import classic from './impl/classic';
-import transmission from './impl/transmission';
-import infection from './impl/infection';     // 🔸 NEW
-import { GameModeHandler } from './types';
+import classic from './impl/classic.js';
+import transmission from './impl/transmission.js';
+import infection from './impl/infection.js';     // 🔸 NEW
+import type  { GameModeHandler } from './types.js';
 
 export const handlers: Record<string, GameModeHandler> = {
   classic,
