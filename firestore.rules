@@ -21,6 +21,13 @@ service cloud.firestore {
       return /databases/$(database)/documents/rooms/$(roomId)/players/$(uid);
     }
 
+    function nameValid() {
+      return !('name' in request.resource.data)
+            || (request.resource.data.name is string
+                && request.resource.data.name.size() > 0
+                && request.resource.data.name.size() <= 60);
+    }
+
     // Owner défini à partir de l'état courant (resource), jamais à partir de la requête
     function isOwner(roomId) {
       return isSignedIn() && (
@@ -32,7 +39,6 @@ service cloud.firestore {
 
     // Accepte 'chasseur' (FR) OU 'hunter' (EN), rôles null/absent protégés
     function isHunter(roomId, uid) {
-      // ➜ utiliser exists() (fonction globale) au lieu de p.exists()
       let pPath = playerRef(roomId, uid);
       let hasPlayer = exists(pPath);
       let roleFromPlayer = hasPlayer ? get(pPath).data.role : null;
@@ -82,78 +88,71 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).changedKeys().hasOnly(allowed);
     }
 
+    /* ── ⛳️ Bypass global pour admin ─────────────────────────
+       Si request.auth.token.admin == true ➜ accès total partout.
+       L’évaluation est additive : ce bloc autorise admin même si
+       d’autres blocs refuseraient.                                     */
+    match /{path=**} {
+      allow read, write: if isAdmin();
+    }
+
     /* ── Admin area (monitor) ───────────────────────────────── */
     // Lecture des documents d’admin (ex: admin/stats)
     match /admin/{doc=**} {
       allow read: if isAdmin();
-      allow write: if false; // écriture via Admin SDK / Cloud Functions uniquement
+      allow write: if false; // écriture via Admin SDK / Cloud Functions uniquement (admin “client” passe quand même par le bypass global)
     }
 
     // Events au TOP-LEVEL (si tu en as : ex. Functions créent /events/{eventId})
     match /events/{eventId} {
-      // lecture monitor (admin), pas d'écriture côté client
       allow read: if isAdmin();
       allow write: if false;
     }
 
     // Lecture via COLLECTION GROUP "events" pour le monitor (où qu’ils soient)
     match /{path=**}/events/{eventId} {
-      // lecture monitor (admin)
       allow read: if isAdmin();
-      // écriture côté client interdite ici ; règles spécifiques plus bas dans rooms/** s'appliquent
       allow write: if false;
     }
 
     /* ── /users/{uid} ───────────────────────────────────────── */
     match /users/{uid} {
       allow read: if isSignedIn();
-
-      // CREATE: le user crée/maj son profil
       allow create: if (isSignedIn()
                     && request.auth.uid == uid
                     && userCreateValid()) || isAdmin();
-
-      // UPDATE: idem avec diff contrôlé
-      allow update: if isSignedIn()
+      allow update: if (isSignedIn()
                     && request.auth.uid == uid
-                    && userUpdateValid();
+                    && userUpdateValid()) || isAdmin();
     }
 
     /* ── /rooms/{roomId} ────────────────────────────────────── */
     match /rooms/{roomId} {
-      // Tous les users sign-in peuvent lire une room
       allow read: if isSignedIn();
 
-      // CREATE: le créateur devient owner (ownerUid == request.auth.uid)
       allow create: if (isSignedIn()
                     && request.resource.data.ownerUid == request.auth.uid) || isAdmin();
 
-      // UPDATE: owner actuel uniquement, ownerUid immuable, keys en liste blanche
       allow update: if (isOwner(roomId)
                 && ownerUnchanged()
                 && onlyAllowedKeysChanged([
-                  // Corriger 'status' → 'state' si c’est ce que tu utilises dans le doc
                   'state',
                   'mode',
                   'roles',
                   'lastEventAt',
-                  // Souvent mis à jour en même temps :
                   'updatedAt',
-                  // Si tu fais évoluer ces champs côté app :
                   'players',
                   'targetScore',
                   'timeLimit',
-                  'displayNameOwner'
-                ])) || isAdmin();
+                  'displayNameOwner','name' 
+                ])) && nameValid() || isAdmin();
 
-      // DELETE: owner
       allow delete: if isOwner(roomId) || isAdmin();
 
       /* ---- sub: players ---- */
       match /players/{uid} {
         allow read: if isSignedIn();
 
-        // Le joueur peut gérer son doc ; le owner peut gérer n'importe quel player
         allow create: if (isSignedIn()
                       && (request.auth.uid == uid || isOwner(roomId))
                       && playerCreateValid()) || isAdmin();
@@ -162,23 +161,15 @@ service cloud.firestore {
                       && (request.auth.uid == uid || isOwner(roomId))
                       && playerUpdateValid()) || isAdmin();
 
-        // Suppression: owner de la room OU le joueur lui-même
         allow delete: if isOwner(roomId) || (isSignedIn() && request.auth.uid == uid) || isAdmin();
       }
 
-      /* ---- sub: events (structure "historique" par room) ---- */
+      /* ---- sub: events (historique) ---- */
       match /events/{eventId} {
-        // Lecture pour tout user signé (comportement originel côté jeu)
         allow read: if isSignedIn();
-
-        // Création: uniquement les chasseurs (ou owner si tu veux), + schema côté joueur
         allow create: if (isSignedIn()
                       && isHunter(roomId, request.auth.uid)) || isAdmin();
-
-        // Immutable côté client
         allow update: if false;
-
-        // Suppression: owner
         allow delete: if isOwner(roomId) || isAdmin();
       }
     }

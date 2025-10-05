@@ -92,7 +92,7 @@
     <mat-card-title>Joueurs</mat-card-title>
     <mat-card-content>
       <mat-list>
-        @for (p of (playersVM$ | async); track p.uid) {
+        @for (p of (playersVM$ | async); track trackByUid) {
           <mat-list-item>
             <mat-icon matListItemIcon fontSet="material-symbols-outlined">person</mat-icon>
 

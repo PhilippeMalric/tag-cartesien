@@ -26,8 +26,15 @@
     "deploy:functions": "firebase deploy --only functions",
     "deploy:all": "ng build && firebase deploy",
     "snapshot": "node functions/scripts/snapshot.mjs",
-    "snapshot:dated": "powershell -NoProfile -Command \"$env:OUTFILE='snapshot_{0}.txt' -f (Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'); node functions/scripts/snapshot.mjs\""
-   
+    "snapshot:dated": "powershell -NoProfile -Command \"$env:OUTFILE='snapshot_{0}.txt' -f (Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'); node functions/scripts/snapshot.mjs\"",
+       "admin:fb": "node functions/scripts/set-admin.mjs",
+    "admin:rtdb": "node functions/scripts/rtdb-admin.mjs add-admin --dbNamespace tag-cartesien-default-rtdb",
+
+    "admin:fb:win":   "node functions/scripts/set-admin.mjs %npm_config_uid% --emulator --project tag-cartesien --revoke",
+    "admin:rtdb:win": "node functions/scripts/rtdb-admin.mjs add-admin --uid %npm_config_uid% --dbNamespace tag-cartesien-default-rtdb",
+    "admin:both:win": "npm run admin:fb:win --uid=%npm_config_uid% && npm run admin:rtdb:win --uid=%npm_config_uid%",
+      "admin:both": "node functions/scripts/admin-both.mjs --emulator --project demo-project --dbNamespace tag-cartesien-default-rtdb",
+        "test":"node functions/scripts/admin-both.mjs --uid 823psalcrSfYcwnPudOfuwtas0x7 --emulator --project demo-project --dbNamespace tag-cartesien-default-rtdb"
   },
   "prettier": {
     "printWidth": 100,

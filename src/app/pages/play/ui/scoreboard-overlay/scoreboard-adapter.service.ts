@@ -11,6 +11,7 @@ import {
   query,
 } from '@angular/fire/firestore';
 import { Observable, combineLatest, map, shareReplay } from 'rxjs';
+import { RoomDoc } from '../../../room/room.imports';
 
 export type PlayerDoc = {
   uid?: string;
@@ -27,12 +28,7 @@ export type TagEvent = {
   ts?: any; // Firestore Timestamp
 };
 
-export type RoomDoc = {
-  mode?: 'classic' | 'transmission' | 'infection' | string;
-  targetScore?: number;
-  roles?: Record<string, 'chasseur' | 'chassé'>;
-  playersCount?: number;
-};
+
 
 export type PlayerVM = {
   uid: string;

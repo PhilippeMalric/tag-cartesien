@@ -79,7 +79,7 @@ console.log('[shouldUseEmulators]', shouldUseEmulators, 'host=', IS_BROWSER ? wi
       // 3) Firestore
       provideFirestore(() => {
         const fs = getFirestore();
-        if (shouldUseEmulators) connectFirestoreEmulator(fs, '127.0.0.1', 8080);
+        connectFirestoreEmulator(fs, '127.0.0.1', 8080);
         return fs;
       }),
 
