@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { authState, Auth as FirebaseAuth } from '@angular/fire/auth';
-import { Firestore, doc, docData, collection, collectionData, updateDoc } from '@angular/fire/firestore';
-import { addDoc, getDoc, increment, limit, orderBy, query, serverTimestamp } from 'firebase/firestore';
+import { Firestore, doc, docData, collection, collectionData, updateDoc, query, orderBy, limit, getDoc, addDoc, serverTimestamp } from '@angular/fire/firestore';
+
 import { Observable, firstValueFrom, map, shareReplay } from 'rxjs';
 import { MyPlayerDoc,  TagEvent } from './play.models';
 import { RoomDoc } from '../../models/room.model';

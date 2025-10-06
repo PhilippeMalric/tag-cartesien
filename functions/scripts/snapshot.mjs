@@ -12,32 +12,38 @@ const OUTFILE = process.env.OUTFILE || 'snapshot_all.txt';
 const EXCLUDE_DIRS = new Set([
   'node_modules', '.git', '.angular', 'dist', 'build', 'out', 'coverage',
   '.vscode', '.idea', 'tmp', 'temp',
-  'lib',                // ← exclude outputs tsc
-  'environments'        // ← Angular src/environments/*
+  'lib',                // outputs tsc
+  'environments'        // Angular src/environments/*
 ]);
 
 // Extensions autorisées (sans le point)
 const EXT = new Set([
-  'ts','tsx','js','jsx','mjs','cjs','html','css','scss','json','md','yml','yaml','sh','ps1','bat'
+  'ts','tsx','js','jsx','mjs','cjs','html','css','scss','json','md','yml','yaml','sh','ps1','bat','rules'
 ]);
 
-// Fichiers à exclure par motif (basename seulement)
+// Fichiers à exclure par motif (basename)
 const EXCLUDE_FILE_REGEX = [
-  /^environment(\..+)?\.ts$/i,         // environment.ts, environment.prod.ts, etc.
-  /^\.env(\..+)?$/i,                   // .env, .env.local, .env.production...
-  /^serviceaccount.*\.json$/i,         // serviceAccount*.json
-  /^firebase.*\.json$/i,               // firebase*.json (credentials, config)
-  /^google-credentials.*\.json$/i,     // google-credentials*.json
-  /^secret.*\.(json|txt)$/i,           // secret*.json/txt
+  /^environment(\..+)?\.ts$/i,
+  /^\.env(\..+)?$/i,
+  /^serviceaccount.*\.json$/i,
+  /^firebase.*\.json$/i,
+  /^google-credentials.*\.json$/i,
+  /^secret.*\.(json|txt)$/i,
 ];
 
-// retourne true si un chemin contient un dossier exclu
+// Fichiers à FORCER dans la sortie (chemins relatifs à ROOT ou basenames).
+// Par défaut, on force 'firestore.rules'. Tu peux compléter via l'env FORCE_INCLUDE="fileA,fileB".
+const FORCE_INCLUDE = new Set(
+  (process.env.FORCE_INCLUDE?.split(',').map(s => s.trim()).filter(Boolean) ?? [])
+    .concat(['firestore.rules'])
+);
+
+// util
 function isExcludedDir(p) {
-  const parts = path.relative(ROOT, p).split(path.sep);
+  const rel = path.relative(ROOT, p);
+  const parts = rel.split(path.sep).filter(Boolean);
   return parts.some(part => EXCLUDE_DIRS.has(part));
 }
-
-// retourne true si un fichier doit être exclu par nom
 function isExcludedFile(filePath) {
   const base = path.basename(filePath);
   return EXCLUDE_FILE_REGEX.some(rx => rx.test(base));
@@ -66,29 +72,84 @@ async function walk(dir, files = []) {
   return files;
 }
 
-async function main() {
-  const files = await walk(ROOT, []);
-  // vide le fichier de sortie
-  await fs.writeFile(path.join(ROOT, OUTFILE), '', 'utf8');
-
-  for (const f of files) {
-    let content = '';
-    try {
-      content = await fs.readFile(f, 'utf8');
-    } catch {
-      continue;
-    }
-
-    const header =
+async function appendFileToOut(absPath, outAbs) {
+  let content = '';
+  try {
+    content = await fs.readFile(absPath, 'utf8');
+  } catch {
+    return false;
+  }
+  const header =
 `────────────────────────────────────────────────────────────
-FILE: ${f}
-REL:  ${path.relative(ROOT, f)}
+FILE: ${absPath}
+REL:  ${path.relative(ROOT, absPath)}
 ────────────────────────────────────────────────────────────
 `;
-    await fs.appendFile(path.join(ROOT, OUTFILE), header + content + '\n\n', 'utf8');
+  await fs.appendFile(outAbs, header + content + '\n\n', 'utf8');
+  return true;
+}
+
+async function resolveForceIncludes() {
+  const results = new Set();
+  for (const entry of FORCE_INCLUDE) {
+    // 1) si entry est un chemin relatif depuis ROOT
+    const direct = path.resolve(ROOT, entry);
+    try {
+      const stat = await fs.stat(direct);
+      if (stat.isFile()) {
+        results.add(direct);
+        continue;
+      }
+    } catch {}
+
+    // 2) sinon, on cherche par basename dans le repo
+    const matches = [];
+    async function search(dir) {
+      if (isExcludedDir(dir)) return;
+      let entries = [];
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch { return; }
+      for (const e of entries) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) {
+          await search(p);
+        } else {
+          if (path.basename(p) === entry) matches.push(p);
+        }
+      }
+    }
+    await search(ROOT);
+    for (const m of matches) results.add(m);
+  }
+  return Array.from(results);
+}
+
+async function main() {
+  const outAbs = path.join(ROOT, OUTFILE);
+
+  // 1) parcourt standard
+  const files = await walk(ROOT, []);
+  await fs.writeFile(outAbs, '', 'utf8');
+
+  for (const f of files) {
+    await appendFileToOut(f, outAbs);
   }
 
-  console.log(`OK → ${OUTFILE} (${files.length} files)`);
+  // 2) Ajoute les fichiers FORCÉS s'ils n'ont pas déjà été ajoutés
+  const forced = await resolveForceIncludes();
+  const already = new Set(files.map(f => path.resolve(f)));
+
+  let added = 0;
+  for (const f of forced) {
+    const abs = path.resolve(f);
+    if (!already.has(abs)) {
+      const ok = await appendFileToOut(abs, outAbs);
+      if (ok) added++;
+    }
+  }
+
+  console.log(`OK → ${OUTFILE} (${files.length} files + ${added} forced)`);
 }
 
 main().catch(err => {

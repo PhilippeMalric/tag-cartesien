@@ -1,22 +1,51 @@
 // functions/src/index.ts
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue, QueryDocumentSnapshot } from "firebase-admin/firestore";
-import {  onDocumentCreated } from "firebase-functions/v2/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { onDocumentCreated, onDocumentDeleted } from "firebase-functions/v2/firestore";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { handlers } from "./modes/index.js";
+import { removePlayerCore, cleanRoomAfterPlayerRemoval } from "./lib/players.js";
 
-// -----------------------------------------------------------------------------
-// Initialisation
-// -----------------------------------------------------------------------------
 initializeApp();
-setGlobalOptions({
-  region: "northamerica-northeast1",
-  maxInstances: 10,
+setGlobalOptions({ region: "northamerica-northeast1", maxInstances: 10 });
+
+const db = getFirestore();
+
+/** Callable: removePlayer */
+export const removePlayer = onCall(async (req) => {
+  const auth = req.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Authentication required.");
+
+  const { roomId, uid } = (req.data ?? {}) as { roomId?: string; uid?: string };
+  if (!roomId || !uid) throw new HttpsError("invalid-argument", "roomId and uid are required.");
+
+  try {
+    const res = await removePlayerCore(db, {
+      roomId,
+      uid,
+      callerUid: auth.uid,
+      isAdmin: auth.token?.admin === true,
+    });
+    return res;
+  } catch (e: any) {
+    if (e?.code === "permission-denied") {
+      throw new HttpsError("permission-denied", e.message ?? "Not allowed");
+    }
+    if (e?.code === "not-found") {
+      throw new HttpsError("not-found", e.message ?? "Room not found");
+    }
+    throw new HttpsError("internal", e?.message ?? "Remove failed");
+  }
 });
 
-// -----------------------------------------------------------------------------
-// Types utilitaires
-// -----------------------------------------------------------------------------
+/** Trigger: cleanup auto si un player est supprimé directement */
+export const onPlayerDeleted = onDocumentDeleted("rooms/{roomId}/players/{uid}", async (event) => {
+  const { roomId, uid } = event.params as { roomId: string; uid: string };
+  await cleanRoomAfterPlayerRemoval(db, roomId, uid);
+});
+
+/** Ton trigger onTag existant (inchangé) */
 type PlayerDoc = {
   score?: number;
   combo?: number;
@@ -24,19 +53,16 @@ type PlayerDoc = {
   iFrameUntilMs?: number;
   role?: "chasseur" | "chassé" | string;
 };
-
 type RoomDoc = {
   mode?: "classic" | "transmission" | "infection" | string;
-  targetScore?: number;            // classic
-  // Infection
+  targetScore?: number;
   victory?: "all_infected" | "target_infections";
-  infectionTarget?: number;        // si target_infections
+  infectionTarget?: number;
   roles?: Record<string, string>;
-  huntersCount?: number;           // optionnel (variante optimisée)
-  playersCount?: number;           // optionnel (variante optimisée)
+  huntersCount?: number;
+  playersCount?: number;
   state?: "idle" | "running" | "ended" | "done";
 };
-
 type TagEventData = {
   type?: string;
   hunterUid?: string;
@@ -45,14 +71,8 @@ type TagEventData = {
   y?: number;
 };
 
-
-type TagParams = { roomId: string; eventId: string };
-
-// -----------------------------------------------------------------------------
-// Trigger principal : création d'un event → traitement du tag
-// -----------------------------------------------------------------------------
 export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async (event) => {
-  const snap = event["data"];
+  const snap = event.data;
   if (!snap) return;
 
   const data = snap.data() as TagEventData;
@@ -63,37 +83,29 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
   const victimUid = data.victimUid as string | undefined;
   if (!roomId || !hunterUid || !victimUid) return;
 
-  const db = getFirestore();
   const roomRef = db.doc(`rooms/${roomId}`);
   const eventRef = snap.ref;
 
-  // ---------------------------------------------------------------------------
-  // Idempotence : réserver le traitement AVANT tout (évite doubles exécutions)
-  // ---------------------------------------------------------------------------
+  // Idempotence
   const markerRef = eventRef.collection("_processed").doc("score");
   const claimed = await db.runTransaction(async (tx) => {
     const m = await tx.get(markerRef);
-    if (m["exists"]) return false; // déjà traité par une autre instance
+    if (m.exists) return false;
     tx.set(markerRef, { at: FieldValue.serverTimestamp() }, { merge: true });
-    return true;                // réservé
+    return true;
   });
   if (!claimed) return;
 
-  // ---------------------------------------------------------------------------
-  // Chargements nécessaires
-  // ---------------------------------------------------------------------------
+  // Chargements
   const roomSnap = await roomRef.get();
   const room = (roomSnap.data() || {}) as RoomDoc;
   const modeName = (room.mode ?? "classic") as NonNullable<RoomDoc["mode"]>;
 
-  // Cache "best effort" des joueurs (les handlers revalideront en transaction)
   const playersSnap = await db.collection(`rooms/${roomId}/players`).get();
   const players = new Map<string, PlayerDoc>();
   playersSnap.forEach((d) => players.set(d.id, (d.data() || {}) as PlayerDoc));
 
-  // ---------------------------------------------------------------------------
-  // Dispatch vers le handler du mode
-  // ---------------------------------------------------------------------------
+  // Dispatch mode
   const handler = handlers[modeName];
   if (handler?.onTag) {
     await handler.onTag({
@@ -107,45 +119,34 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Conditions de fin de manche selon le mode
-  // ---------------------------------------------------------------------------
-
-  // 1) CLASSIC : fin quand le score du chasseur atteint targetScore
+  // Conditions de fin
   if (modeName === "classic") {
     const target = room.targetScore ?? 5;
     if (target > 0) {
       const hunterRef = db.doc(`rooms/${roomId}/players/${hunterUid}`);
       const hunterDoc = await hunterRef.get();
       const h = (hunterDoc.data() || {}) as PlayerDoc;
-      const score = h.score ?? 0;
-      if (score >= target) {
+      if ((h.score ?? 0) >= target) {
         await roomRef.set({ state: "ended", endedAt: Date.now() }, { merge: true });
         return;
       }
     }
   }
 
-  // 2) INFECTION : deux variantes
   if (modeName === "infection") {
     const victory = room.victory ?? "all_infected";
-
-    // 2a) target_infections : fin si le chasseur atteint infectionTarget
     if (victory === "target_infections") {
       const target = room.infectionTarget ?? 10;
       if (target > 0) {
         const hunterRef = db.doc(`rooms/${roomId}/players/${hunterUid}`);
         const hunterDoc = await hunterRef.get();
         const h = (hunterDoc.data() || {}) as PlayerDoc;
-        const score = h.score ?? 0;
-        if (score >= target) {
+        if ((h.score ?? 0) >= target) {
           await roomRef.set({ state: "ended", endedAt: Date.now() }, { merge: true });
           return;
         }
       }
     } else {
-      // 2b) all_infected : fin si tous les joueurs sont "chasseur"
-      // Variante optimisée : si room maintient huntersCount/playersCount
       const freshRoom = ((await roomRef.get()).data() || {}) as RoomDoc;
       const huntersCount = freshRoom.huntersCount ?? room.huntersCount;
       const playersCount = freshRoom.playersCount ?? room.playersCount;
@@ -160,7 +161,6 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
         return;
       }
 
-      // Fallback : compter via roles + nombre de docs players
       const roles = freshRoom.roles ?? room.roles ?? {};
       if (roles && Object.keys(roles).length > 0) {
         const playersCol = await db.collection(`rooms/${roomId}/players`).get();
@@ -176,6 +176,4 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
       }
     }
   }
-
-  // 3) TRANSMISSION : pas de condition de fin par défaut (à définir si besoin)
 });

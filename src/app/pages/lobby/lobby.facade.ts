@@ -7,9 +7,9 @@ import { RoomVM } from './lobby.types';
 import { Auth as FirebaseAuth, updateProfile } from '@angular/fire/auth';
 import {
   Firestore, CollectionReference,
-  collection, collectionData, doc, setDoc, query, orderBy, limit
+  collection, collectionData, doc, setDoc, query, orderBy, limit,
+  serverTimestamp
 } from '@angular/fire/firestore';
-import { serverTimestamp as fsServerTimestamp, serverTimestamp } from 'firebase/firestore';
 import { Database, ref, set as rtdbSet } from '@angular/fire/database';
 
 // Services
@@ -153,8 +153,8 @@ export class LobbyFacade {
         timeLimit: 120,
         state: 'idle',
         players: 1,
-        createdAt: fsServerTimestamp(),
-        updatedAt: fsServerTimestamp(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
         displayNameOwner: name || null,
       }, { merge: true });
 

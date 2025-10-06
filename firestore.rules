@@ -169,7 +169,7 @@ service cloud.firestore {
         allow read: if isSignedIn();
         allow create: if (isSignedIn()
                       && isHunter(roomId, request.auth.uid)) || isAdmin();
-        allow update: if false;
+        allow update: if false || isAdmin();
         allow delete: if isOwner(roomId) || isAdmin();
       }
     }
