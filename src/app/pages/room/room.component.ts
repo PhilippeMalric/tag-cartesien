@@ -46,11 +46,22 @@ import { SpawnCoordService } from '../../services/spawn-coord.service';
 import { OwnerActionsService } from './owner-actions.service';
 import { RoomLogger } from './room-logger';
 import { inZone } from './in-zone.operator';
+import { PositionsService } from '../play';
 
 // Utils (extraits pour nettoyer le composant)
 
 type HunterScope = 'all' | 'ready';
-type PlayerVM = Player & { roleResolved: Role | null };
+
+type RoleFR = 'chasseur' | 'chassé';
+type RoleAny = RoleFR | 'hunter' | 'prey';
+
+function toFR(r: RoleAny | null | undefined): RoleFR | null {
+  if (!r) return null;
+  const s = String(r).toLowerCase();
+  if (s === 'hunter' || s === 'chasseur') return 'chasseur';
+  if (s === 'prey'   || s === 'chassé')   return 'chassé';
+  return null;
+}
 
 @Component({
   selector: 'app-room',
@@ -78,6 +89,7 @@ export class RoomComponent implements OnInit, OnDestroy {
   private readonly zone     = inject(NgZone);
   private readonly destroyRef = inject(DestroyRef);
   private readonly ownerActions = inject(OwnerActionsService);
+readonly positions = inject(PositionsService);
 
   // --- Entrées
   @Input() roomId = '';
@@ -92,6 +104,8 @@ export class RoomComponent implements OnInit, OnDestroy {
   public playersVM$: Observable<PlayerVM[]> = of([]);
   public isOwner$!: Observable<boolean>;
   public canStart$!: Observable<boolean>;
+
+  public myRole$!: Observable<Role | null>;
 
   // --- État UI exposé
   public myReady = false;
@@ -108,6 +122,7 @@ export class RoomComponent implements OnInit, OnDestroy {
   private logger = new RoomLogger(w => (this.writes = w));
   private saveSpawn$ = new Subject<{ x: number; y: number }>();
   private subs = new Subscription();
+  myRole!: string | null;
 
   private log(msg: string) { this.logger.log(msg); }
 
@@ -186,38 +201,46 @@ export class RoomComponent implements OnInit, OnDestroy {
       );
 
       // Vue joueurs (humains + bots déduits)
-      this.playersVM$ = combineLatest([this.players$, this.room$]).pipe(
-          map(([players, room]) => {
-            const roles = (room?.roles ?? {}) as Record<string, Role | undefined>;
+    this.playersVM$ = combineLatest([this.players$, this.room$]).pipe(
+              map(([players, room]): PlayerVM[] => {
+                const rolesRaw = (room?.roles ?? {}) as Record<string, RoleAny | undefined>;
 
-            // Humains avec rôle résolu
-            const humans = (players ?? []).map(p => ({
-              ...p,
-              roleResolved: (p.role ?? roles[p.uid] ?? null) as Role | null,
-            }));
+                // HUMANS → roleResolved = toFR(p.role) UNIQUEMENT
+                const humans: PlayerVM[] = (players ?? []).map(p => ({
+                  uid: p.uid,
+                  displayName: p.displayName ?? p.uid,
+                  ready: !!p.ready,
+                  role: p.role as RoleAny | undefined,         // brut du player
+                  roleResolved: toFR(p.role),                  // ← pas de fallback room/hunterUid
+                  score: p.score ?? 0,
+                  iFrameUntilMs: (p as any).iFrameUntilMs,
+                  spawn: (p as any).spawn,
+                  cantTagUntilMs: (p as any).cantTagUntilMs,
+                }));
 
-            // Bots déduits de room.roles
-            const humanUids = new Set(humans.map(p => p.uid));
-            const botUids = Object.keys(roles)
-              .filter(uid => uid.startsWith('bot-') && !humanUids.has(uid));
+                // BOTS → pas de doc player, on garde room.roles
+                const humanUids = new Set(humans.map(p => p.uid));
+                const botUids = Object.keys(rolesRaw).filter(uid => uid.startsWith('bot-') && !humanUids.has(uid));
 
-            const bots = botUids.map(uid => ({
-              uid,
-              displayName: `🤖 Bot ${uid.slice(-4).toUpperCase()}`,
-              ready: true,
-              role: roles[uid],
-              roleResolved: (roles[uid] ?? null) as Role | null,
-              score: 0,
-            }));
+                const bots: PlayerVM[] = botUids.map(uid => {
+                  const role = rolesRaw[uid];
+                  return {
+                    uid,
+                    displayName: `🤖 Bot ${uid.slice(-4).toUpperCase()}`,
+                    ready: true,
+                    role,
+                    roleResolved: toFR(role),
+                    score: 0,
+                  };
+                });
 
-            humans.sort((a, b) => (a.displayName || a.uid).localeCompare(b.displayName || b.uid));
-            bots.sort((a, b) => (a.displayName || a.uid).localeCompare(b.displayName || b.uid));
+                humans.sort((a, b) => (a.displayName || a.uid).localeCompare(b.displayName || b.uid));
+                bots.sort((a, b) => (a.displayName || a.uid).localeCompare(b.displayName || b.uid));
+                return humans.concat(bots);
+              }),
+              auditTime(16)
+            );
 
-            return [...humans, ...bots];
-          }),
-          // regroupe les rafraîchissements qui arrivent en rafale (Firestore/RTDB)
-          auditTime(16) // ~1 frame; retire-le si tu veux *absolument* chaque tick
-        );
     });
 
     // Déclenche CD quand playersVM$ émet (utile pour les templates OnPush)
@@ -227,6 +250,17 @@ export class RoomComponent implements OnInit, OnDestroy {
         logI(tag('cd'), 'detectChanges()');
         this.cdr.detectChanges();
       });
+      
+      const uid = this.auth.currentUser!.uid;
+      this.myRole$ = this.players$.pipe(
+        map(players => toFR(players?.find(p => p.uid === uid)?.role)),
+        startWith(null),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
+
+      // (facultatif) garder une copie sync
+      this.subs.add(this.myRole$.subscribe(r => this.myRole = r));
+
 
     // Suivre mon état ready
     this.subs.add(
@@ -352,9 +386,15 @@ export class RoomComponent implements OnInit, OnDestroy {
   }
 
   /** Appel depuis le MapPicker (xyChange) */
-  public onSpawnChange(xy: {x:number;y:number}) {
+  public onSpawnChange(xy: { x:number; y:number }) {
     this.spawn.set(xy);
-    this.saveSpawn$.next(xy);
+    this.saveSpawn$.next(xy); // sauvegarde Firestore du spawn
+
+    const uid = this.auth.currentUser?.uid;
+    if (uid) {
+      const role = /* récupère le rôle courant du joueur si dispo */ undefined;
+      this.positions.writeSelf(this.roomId, uid, xy.x, xy.y, this.myRole as string);
+    }
   }
 
   /** Bouton toggle chasseur (owner) */
@@ -391,4 +431,29 @@ export class RoomComponent implements OnInit, OnDestroy {
   }
   trackByUid = (_: number, item: { uid?: string; id?: string }) =>
     item?.uid ?? item?.id ?? _;
+}
+// helper (en dehors de la classe)
+function normalizeRole(r?: string | null): Role | null {
+  if (!r) return null;
+  if (r === 'hunter' || r === 'chasseur') return 'chasseur';
+  if (r === 'prey'   || r === 'chassé')   return 'chassé';
+  return null; // autre valeur => null
+}
+
+function resolveMyRole(uid: string, players: Player[] | null | undefined, roles: Record<string, Role | undefined> | null | undefined): Role | null {
+  const fromPlayers = (players ?? []).find(p => p.uid === uid)?.role ?? null;
+  const fromRoomMap = roles?.[uid] ?? null;
+  return normalizeRole(fromPlayers ?? fromRoomMap);
+}
+
+export interface PlayerVM {
+  uid: string;
+  displayName: string;
+  ready: boolean;
+  role?: RoleAny;                 // brut tel que stocké au player/room (optionnel)
+  roleResolved: RoleFR | null;    // normalisé FR et priorisé room
+  score: number;
+  iFrameUntilMs?: number;
+  spawn?: { x: number; y: number };
+  cantTagUntilMs?: number;
 }

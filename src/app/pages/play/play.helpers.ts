@@ -22,6 +22,8 @@ export function remainingInvulnMs(
 /** Cherche la victime la plus proche dans le rayon de tag */
 export function findVictimWithinRadius(ctx: PlayCtx): { uid: string; dist: number } | null {
   let best: { uid: string; dist: number } | null = null;
+
+  
   for (const [uid, p] of ctx.others) {
     const d = Math.hypot(p.x - ctx.me.x, p.y - ctx.me.y);
     if (d <= GAME_CONSTANTS.TAG_RADIUS && (!best || d < best.dist)) best = { uid, dist: d };

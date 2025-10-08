@@ -15,7 +15,7 @@ import { Mode, RoomDoc } from '../../models/room.model';
 
 
 export type RoomState = 'idle' | 'in-progress' | 'running' | 'ended';
-export type Role = 'chasseur' | 'chassé';
+export type Role = 'chasseur' | 'chassé' | 'hunter'| 'prey';
 
 
 
@@ -181,7 +181,7 @@ export class RoomService {
    * Applique des rôles fournis (construits côté composant avec playersVM$).
    * Owner-only (tes règles). N'effectue AUCUNE lecture Firestore ici.
    */
-  async applyRoles(roomId: string, roles: Record<string, 'chasseur' | 'chassé'>): Promise<void> {
+  async applyRoles(roomId: string, roles: Record<string, Role>): Promise<void> {
     return runInInjectionContext(this.env, async () => {
       await updateDoc(this.roomRef(roomId), { roles, rolesUpdatedAt: serverTimestamp() });
       // Optionnel: refléter sur chaque player

@@ -4,13 +4,14 @@ import { Auth as FirebaseAuth } from '@angular/fire/auth';
 
 import { PositionsService } from './positions.service';
 import { MatchService } from './match.service';
-import { RoomService } from '../room/room.service';
+import {  Role, RoomService } from '../room/room.service';
 import { BotService } from './bot.service';
 
 import { OtherPos, Pos } from './play.models';
 import { PlayRenderer } from './play.renderer';
 import { SpawnCoordService } from '../../services/spawn-coord.service';
 import { Subscription } from 'rxjs';
+import { Database } from '@angular/fire/database';
 
 export type RecentTag = { label: string; until: number };
 
@@ -35,7 +36,7 @@ export interface PlayCtx {
   // État exposé au template (garder ces noms !)
   matchId: string;
   uid: string;
-  role: 'chasseur' | 'chassé' | null;
+  role: Role
   myScore: number;
   targetScore: number;
   timeLeft: number;
@@ -59,4 +60,5 @@ export interface PlayCtx {
   spawnSvc: SpawnCoordService;
   sub:Subscription;
   hunterIFrameUntilMs?: number;
+  rtdb: Database;
 }

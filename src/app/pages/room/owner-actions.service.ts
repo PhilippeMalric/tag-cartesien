@@ -1,29 +1,25 @@
 import { Injectable, inject } from '@angular/core';
 import { RoomService } from './room.service';
+import { PlayerVM } from './room.component';
 
 type HunterScope = 'all' | 'ready';
 type RoleFR = 'chasseur' | 'chassé';
 
-type PlayerLite = {
-  uid: string;
-  displayName?: string;
-  ready?: boolean;
-  role?: RoleFR | null;
-};
+
 
 @Injectable({ providedIn: 'root' })
 export class OwnerActionsService {
   private readonly roomSvc = inject(RoomService);
 
   /** Filtre utilitaire: enlève les joueurs sans uid ou les bots */
-  private sanitizePlayers(arr: PlayerLite[] | null | undefined): PlayerLite[] {
+  private sanitizePlayers(arr: PlayerVM[] | null | undefined): PlayerVM[] {
     return (arr ?? []).filter(p => !!p?.uid && !String(p.uid).startsWith('bot-'));
   }
 
   /** Tire un chasseur et applique les rôles côté Firestore (un seul chasseur) */
   async applyRandomHunter(
     roomId: string,
-    players: PlayerLite[],
+    players: PlayerVM[],
     scope: HunterScope
   ): Promise<{ uid: string; displayName?: string }> {
     const all = this.sanitizePlayers(players);
@@ -59,7 +55,7 @@ export class OwnerActionsService {
     ownerUid: string,
     targetUid: string,
     isCurrentlyHunter: boolean,
-    getAllPlayers: () => Promise<PlayerLite[]>
+    getAllPlayers: () => Promise<PlayerVM[]>
   ): Promise<string> {
     const all = this.sanitizePlayers(await getAllPlayers());
     if (!all.length) throw new Error('Aucun joueur');
@@ -90,25 +86,51 @@ export class OwnerActionsService {
     roomId: string,
     targetUid: string,
     isCurrentlyHunter: boolean,
-    getAllPlayers: () => Promise<PlayerLite[]>,
+    getAllPlayers: () => Promise<PlayerVM[]>,
     getCurrentRoles: () => Promise<Record<string, RoleFR> | null>
   ): Promise<RoleFR> {
     const players = this.sanitizePlayers(await getAllPlayers());
     if (!players.length) throw new Error('Aucun joueur');
 
-    // Rôles actuels (par défaut 'chassé' si absent)
+    // Rôles actuels
     const rolesMap = { ...(await getCurrentRoles() || {}) } as Record<string, RoleFR>;
+
+    // Par défaut, chaque humain sans entrée reçoit 'chassé'
     for (const p of players) if (!rolesMap[p.uid]) rolesMap[p.uid] = 'chassé';
 
-    const countHunters = Object.values(rolesMap).filter(r => r === 'chasseur').length;
-    const countRunners = players.length - countHunters;
+    // Détermine humains/bots à partir des listes
+    const humanUids = new Set(players.map(p => p.uid));
+    const isHuman = (uid: string) => humanUids.has(uid);
 
+    // Comptages utiles
+    const countHumanHunters = Object.entries(rolesMap)
+      .filter(([uid, r]) => isHuman(uid) && r === 'chasseur').length;
+
+    const countHumanRunners = Object.entries(rolesMap)
+      .filter(([uid, r]) => isHuman(uid) && r === 'chassé').length;
+
+    const hasBotRunner = Object.entries(rolesMap)
+      .some(([uid, r]) => !isHuman(uid) && r === 'chassé');
+
+    // Rôle cible (toggle)
     const nextRole: RoleFR = isCurrentlyHunter ? 'chassé' : 'chasseur';
-    if (nextRole === 'chassé' && countHunters <= 1) {
-      throw new Error('Il doit rester au moins un chasseur.');
+
+    // --- GARDE-FOUS ---
+    // 1) Il doit rester au moins un chasseur (humain)
+    //    → Si on bascule un chasseur vers chassé et qu'il était le seul chasseur humain, on bloque.
+    if (nextRole === 'chassé' && isCurrentlyHunter && countHumanHunters <= 1) {
+      throw new Error('Il doit rester au moins un chasseur (humain).');
     }
-    if (nextRole === 'chasseur' && countRunners <= 1) {
-      throw new Error('Il doit rester au moins un chassé.');
+
+    // 2) Il doit rester au moins un chassé (humain OU bot).
+    //    → On autorise 0 humain chassé s’il existe au moins un bot chassé.
+    if (nextRole === 'chasseur') {
+      // Si on promeut un humain actuellement chassé -> le nombre d'humains chassés diminue de 1
+      const humanRunnersAfter = countHumanRunners - (isCurrentlyHunter ? 0 : 1);
+      const thereWillBeAtLeastOneRunner = hasBotRunner || humanRunnersAfter >= 1;
+      if (!thereWillBeAtLeastOneRunner) {
+        throw new Error('Il doit rester au moins un chassé (humain ou bot).');
+      }
     }
 
     await this.roomSvc.setRole(roomId, targetUid, nextRole);

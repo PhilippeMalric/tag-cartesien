@@ -32,6 +32,7 @@ import { DragDropModule } from '@angular/cdk/drag-drop';
 import { SpawnCoordService } from '../../services/spawn-coord.service';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatchService } from './match.service';
+import { Database } from '@angular/fire/database';
 
 @Component({
   selector: 'app-play',
@@ -58,7 +59,7 @@ export class PlayComponent implements OnInit, OnDestroy {
   readonly cd = inject(ChangeDetectorRef);
   readonly env = inject(EnvironmentInjector);
   readonly zone = inject(NgZone);
-
+ readonly rtdb = inject(Database);
   readonly positions = inject(PositionsService);
   readonly match = inject(MatchService);
   readonly roomSvc = inject(RoomService);
@@ -72,7 +73,7 @@ export class PlayComponent implements OnInit, OnDestroy {
   // Exposés au template
   matchId = '';
   uid = '';
-  role: 'chasseur' | 'chassé' | null = null;
+  role = 'chasseur' as any;
   myScore = 0;
   targetScore = 0;
   timeLeft = 0;

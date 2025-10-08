@@ -13,7 +13,7 @@ export class MatchService {
   private auth = inject(FirebaseAuth);
   get uid(): string | undefined { return this.auth.currentUser?.uid || undefined; }
   
-  private readonly EMIT_COOLDOWN_MS = 5000;
+  private readonly EMIT_COOLDOWN_MS = 200;
   private _lastEmitByHunter = new Map<string, number>(); // key = uid
 
   myPlayer$(matchId: string): Observable<MyPlayerDoc> {
@@ -67,9 +67,10 @@ export class MatchService {
       err.retryInMs = me.cantTagUntilMs - now;
       throw err;
     }
+console.log("me?.role",me?.role);
 
     // (optionnel) vérifie rôle chasseur
-    if (me?.role !== 'chasseur') {
+    if (me?.role !== 'chasseur' && me?.role !== 'hunter') {
       throw new Error('not-hunter');
     }
 
@@ -84,6 +85,8 @@ export class MatchService {
     // 🟢 Arme le cooldown local tout de suite, rollback si échec
     this._lastEmitByHunter.set(uid, now);
     try {
+      console.log(`[Match] emitTag ${uid} → ${victimUid} @${x.toFixed(1)},${y.toFixed(1)}`);
+      
       await addDoc(collection(this.fs, `rooms/${matchId}/events`), {
         type: 'tag',
         hunterUid: uid,

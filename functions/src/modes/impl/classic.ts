@@ -2,7 +2,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import type { GameModeHandler } from "../types.js";
 
-const HUNTER_COOLDOWN_MS = 1200;  // anti-spam chasseur (cooldown global visible)
+const HUNTER_COOLDOWN_MS = 100;  // anti-spam chasseur (cooldown global visible)
 const VICTIM_IFRAME_MS   = 1200;  // invulnérabilité victime
 const HUNTER_IFRAME_MS   = 800;   // courte invulnérabilité pour le chasseur (UI + anti-trade)
 

@@ -59,7 +59,7 @@ export class PositionsService {
     this.mergeSub = combineLatest([this._players$, this._bots$]).subscribe(([p, b]) => {
        const merged: Record<string, PosDTO> = { ...p };
        for (const [id, pos] of Object.entries(b || {})) {
-         merged[`bot-${id}`] = pos;
+         merged[`${id}`] = pos;
        }
        this._positions$.next(merged);
      });

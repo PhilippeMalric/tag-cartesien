@@ -1,3 +1,5 @@
+import { Role } from "../room";
+
 // Position de base (x, y)
 export type Pos = { x: number; y: number };
 
@@ -20,7 +22,7 @@ export type TagEvent = {
 };
 
 export type MyPlayerDoc = {
-  role?: 'chasseur' | 'chassé' | null;
+  role?: Role
   score?: number;
   iFrameUntilMs?: number;
   spawn?: { x: number; y: number };
@@ -33,7 +35,7 @@ export type MyPlayerDoc = {
 
 export const GAME_CONSTANTS = {
   TAG_RADIUS: 5,                 // rayon de tag
-  TAG_COOLDOWN_MS: 5000,
+  TAG_COOLDOWN_MS: 200,
   INVULN_MS: 1000,
   RESPAWN_BOUNDS: { minX: -45, maxX: 45, minY: -45, maxY: 45, minDistFromHunter: 12 },
 
@@ -46,7 +48,7 @@ export const GAME_CONSTANTS = {
 
 export interface RenderState {
   me: { x: number; y: number };
-  role: 'chasseur' | 'chassé' | null;
+  role: Role;
   /** Autres joueurs : accepte l’anneau via iFrameUntilMs */
   others: Map<string, OtherPos>;
   tagRadius: number;

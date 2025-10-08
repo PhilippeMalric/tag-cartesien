@@ -6,11 +6,36 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { handlers } from "./modes/index.js";
 import { removePlayerCore, cleanRoomAfterPlayerRemoval } from "./lib/players.js";
+import { setRoomOwnerCore } from "./lib/owners.js";
+import { getDatabase } from "firebase-admin/database";
 
 initializeApp();
 setGlobalOptions({ region: "northamerica-northeast1", maxInstances: 10 });
 
 const db = getFirestore();
+
+
+const rtdb = getDatabase();
+
+// Bornes du monde (adapte si besoin)
+const WORLD = { minX: -50, maxX: 50, minY: -50, maxY: 50 };
+
+// Respawn simple : au hasard dans les bornes, avec option d'éviter de respawn exactement sur (nearX, nearY)
+function pickRespawnSimple(nearX?: number, nearY?: number) {
+  const rand = (a: number, b: number) => Math.floor(Math.random() * (b - a + 1)) + a;
+  let x = rand(WORLD.minX, WORLD.maxX);
+  let y = rand(WORLD.minY, WORLD.maxY);
+  // si on a la position du tag, on évite de respawn trop près (rayon 5)
+  if (Number.isFinite(nearX) && Number.isFinite(nearY)) {
+    const dx = x - (nearX as number);
+    const dy = y - (nearY as number);
+    if (Math.hypot(dx, dy) < 5) {
+      x = Math.max(WORLD.minX, Math.min(WORLD.maxX, x + 7));
+      y = Math.max(WORLD.minY, Math.min(WORLD.maxY, y + 7));
+    }
+  }
+  return { x, y };
+}
 
 /** Callable: removePlayer */
 export const removePlayer = onCall(async (req) => {
@@ -83,10 +108,12 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
   const victimUid = data.victimUid as string | undefined;
   if (!roomId || !hunterUid || !victimUid) return;
 
+  const isBotVictim = String(victimUid).startsWith("bot-");
+
   const roomRef = db.doc(`rooms/${roomId}`);
   const eventRef = snap.ref;
 
-  // Idempotence
+  // --- Idempotence : on ne traite qu'une fois cet event ---
   const markerRef = eventRef.collection("_processed").doc("score");
   const claimed = await db.runTransaction(async (tx) => {
     const m = await tx.get(markerRef);
@@ -96,36 +123,58 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
   });
   if (!claimed) return;
 
-  // Chargements
+  // Lecture room
   const roomSnap = await roomRef.get();
   const room = (roomSnap.data() || {}) as RoomDoc;
   const modeName = (room.mode ?? "classic") as NonNullable<RoomDoc["mode"]>;
 
-  const playersSnap = await db.collection(`rooms/${roomId}/players`).get();
-  const players = new Map<string, PlayerDoc>();
-  playersSnap.forEach((d) => players.set(d.id, (d.data() || {}) as PlayerDoc));
-
-  // Dispatch mode
-  const handler = handlers[modeName];
-  if (handler?.onTag) {
-    await handler.onTag({
-      db,
-      matchId: roomId,
-      hunterUid,
-      victimUid,
-      now: Date.now(),
-      room,
-      players,
+  // --- 1) +1 point au chasseur ---
+  const hunterRef = db.doc(`rooms/${roomId}/players/${hunterUid}`);
+  await db.runTransaction(async (tx) => {
+    const h = await tx.get(hunterRef);
+    if (!h.exists) return; // si pas de doc, on ignore silencieusement
+    tx.update(hunterRef, {
+      score: FieldValue.increment(1),
+      lastTagMs: Date.now(),
     });
+  });
+
+  // --- 2) Si la victime est un BOT : respawn immédiat du bot (déplacement) ---
+  if (isBotVictim) {
+    const { x: tagX, y: tagY } = { x: data.x, y: data.y };
+    const { x: rx, y: ry } = pickRespawnSimple(tagX, tagY);
+    // Écrit dans RTDB: bots/{roomId}/{botId} = { x, y, t }
+    await rtdb.ref(`bots/${roomId}/${victimUid}`).update({
+      x: rx,
+      y: ry,
+      t: Date.now(),
+    });
+  } else {
+    // --- 3) Victime humaine : on laisse les handlers de mode faire leur logique ---
+    const playersSnap = await db.collection(`rooms/${roomId}/players`).get();
+    const players = new Map<string, PlayerDoc>();
+    playersSnap.forEach((d) => players.set(d.id, (d.data() || {}) as PlayerDoc));
+
+    const handler = handlers[modeName];
+    if (handler?.onTag) {
+      await handler.onTag({
+        db,
+        matchId: roomId,
+        hunterUid,
+        victimUid,
+        now: Date.now(),
+        room,
+        players,
+      });
+    }
   }
 
-  // Conditions de fin
+  // --- 4) Conditions de fin (inchangées) ---
   if (modeName === "classic") {
     const target = room.targetScore ?? 5;
     if (target > 0) {
-      const hunterRef = db.doc(`rooms/${roomId}/players/${hunterUid}`);
-      const hunterDoc = await hunterRef.get();
-      const h = (hunterDoc.data() || {}) as PlayerDoc;
+      const hDoc = await hunterRef.get();
+      const h = (hDoc.data() || {}) as PlayerDoc;
       if ((h.score ?? 0) >= target) {
         await roomRef.set({ state: "ended", endedAt: Date.now() }, { merge: true });
         return;
@@ -138,9 +187,8 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
     if (victory === "target_infections") {
       const target = room.infectionTarget ?? 10;
       if (target > 0) {
-        const hunterRef = db.doc(`rooms/${roomId}/players/${hunterUid}`);
-        const hunterDoc = await hunterRef.get();
-        const h = (hunterDoc.data() || {}) as PlayerDoc;
+        const hDoc = await hunterRef.get();
+        const h = (hDoc.data() || {}) as PlayerDoc;
         if ((h.score ?? 0) >= target) {
           await roomRef.set({ state: "ended", endedAt: Date.now() }, { merge: true });
           return;
@@ -175,5 +223,26 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
         }
       }
     }
+  }
+});
+
+
+export const setRoomOwner = onCall(async (req) => {
+  const auth = req.auth;
+  if (!auth) throw new HttpsError('unauthenticated', 'Authentication required.');
+
+  const { roomId, newOwnerUid } = (req.data ?? {}) as { roomId?: string; newOwnerUid?: string };
+  if (!roomId || !newOwnerUid) throw new HttpsError('invalid-argument', 'roomId and newOwnerUid are required.');
+
+  try {
+    const res = await setRoomOwnerCore(getFirestore(), {
+      roomId,
+      newOwnerUid,
+      isAdmin: auth.token?.admin === true,
+    });
+    return res;
+  } catch (e: any) {
+    const code = e?.code || 'internal';
+    throw new HttpsError(code, e?.message ?? 'setRoomOwner failed');
   }
 });

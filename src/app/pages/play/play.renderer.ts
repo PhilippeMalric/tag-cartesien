@@ -150,36 +150,32 @@ export class PlayRenderer {
     };
 
     // --- Autres joueurs (gris par défaut, orange si chasseur) ---
-    for (const [uid, p] of state.others) {
-      const isHunter = !!state.hunterUid && uid === state.hunterUid;
+   for (const [uid, p] of state.others) {
+      // ⚠️ on détermine le chasseur via hunterUid (global), pas via MON rôle
+      const isHunterOther = !!state.hunterUid && uid === state.hunterUid;
+
       const px = cx + p.x * scale;
       const py = cy - p.y * scale;
 
-      // Invulnérabilité côté autres joueurs
-      // Accepte number ms OU Firestore Timestamp-like { seconds, nanoseconds }
+      // iFrame / invuln
       let untilMs: number | undefined;
       const raw = (p as any)?.iFrameUntilMs;
       if (typeof raw === 'number') {
         untilMs = raw;
       } else if (raw && typeof raw.seconds === 'number') {
-        // Firestore Timestamp
         untilMs = (raw.seconds * 1000) + (raw.nanoseconds ? raw.nanoseconds / 1e6 : 0);
       }
-
-      // Fallback: si c'est le chasseur et pas d'iFrame sur le doc joueur,
-      // essaye un champ global passé dans RenderState (epoch ms)
       const hunterFallback = (state as any)?.hunterIFrameUntilMs as number | undefined;
-      if (!untilMs && isHunter && typeof hunterFallback === 'number') {
+      if (!untilMs && isHunterOther && typeof hunterFallback === 'number') {
         untilMs = hunterFallback;
       }
-
       if (untilMs && untilMs > Date.now()) {
         drawInvulnRing(px, py, epochToPerfDeadline(untilMs), 'bottom');
       }
 
-      ctx.fillStyle = isHunter ? colorHunter : colorOther;
+      ctx.fillStyle = isHunterOther ? colorHunter : colorOther;
       ctx.beginPath();
-      ctx.arc(px, py, 6, 0, Math.PI * 2); // y inversé
+      ctx.arc(px, py, 6, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -187,19 +183,22 @@ export class PlayRenderer {
     const mePx = cx + state.me.x * scale;
     const mePy = cy - state.me.y * scale;
 
-    // Invulnérabilité locale (deadline basée sur performance.now())
+    // Invulnérabilité locale
     if (state.invulnerableUntil && performance.now() < state.invulnerableUntil) {
       drawInvulnRing(mePx, mePy, state.invulnerableUntil, 'top');
     }
 
+    // 🟠 tolère EN/FR pour “moi”
+    const amHunter = state.role === 'chasseur' || state.role === 'hunter';
+
     // Moi (orange si chasseur, sinon bleu)
-    ctx.fillStyle = state.role === 'chasseur' ? colorHunter : colorSelf;
+    ctx.fillStyle = amHunter ? colorHunter : colorSelf;
     ctx.beginPath();
-    ctx.arc(mePx, mePy, 8, 0, Math.PI * 2); // y inversé
+    ctx.arc(mePx, mePy, 8, 0, Math.PI * 2);
     ctx.fill();
 
-    // --- Anneau de portée (seulement si je suis chasseur) ---
-    if (state.role === 'chasseur') {
+    // Anneau de portée si je suis chasseur
+    if (amHunter) {
       ctx.strokeStyle = colorRing;
       ctx.beginPath();
       ctx.arc(mePx, mePy, state.tagRadius * scale, 0, Math.PI * 2);
