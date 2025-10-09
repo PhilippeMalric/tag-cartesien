@@ -12,6 +12,7 @@ import { getDatabase } from "firebase-admin/database";
 initializeApp();
 setGlobalOptions({ region: "northamerica-northeast1", maxInstances: 10 });
 
+
 const db = getFirestore();
 
 
@@ -246,3 +247,5 @@ export const setRoomOwner = onCall(async (req) => {
     throw new HttpsError(code, e?.message ?? 'setRoomOwner failed');
   }
 });
+
+export { onIntent } from './move-intent.js';

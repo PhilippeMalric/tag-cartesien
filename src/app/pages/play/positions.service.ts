@@ -9,6 +9,7 @@ export type Vec = { x: number; y: number };
 @Injectable({ providedIn: 'root' })
 export class PositionsService {
   private db = inject(Database);
+  private seqByUser = new Map<string, number>(); // <uid, lastSeq>
 
   private mergeSub?: Subscription;
   roomId!: string; // assigne-la depuis PlayComponent
@@ -76,6 +77,15 @@ export class PositionsService {
       this._positions$.next({});
     }
 
+  async sendIntent(matchId: string, uid: string, vx: number, vy: number, role?: string) {
+      if (!matchId || !uid) return;
+      const seq = (this.seqByUser.get(uid) ?? 0) + 1;
+      this.seqByUser.set(uid, seq);
 
+      const intentRef = ref(this.db, `rooms/${matchId}/intents/${uid}/${seq}`);
+      const payload: any = { vx, vy, t: Date.now() };
+      if (role) payload.role = role;
+      await set(intentRef, payload);
+    }
 
 }

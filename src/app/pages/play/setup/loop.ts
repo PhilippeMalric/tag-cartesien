@@ -20,7 +20,7 @@ export function startGameLoop(ctx: PlayCtx, ls: LocalState) {
       ctx.zone.run(() => ctx.cd.markForCheck());
     }
 
-    // Direction (WASD/ZQSD/flèches)
+   // Direction (WASD/ZQSD/flèches)
     let vx = 0, vy = 0;
     const k = ctx.keys;
     if (k.has('w') || k.has('z') || k.has('arrowup'))    vy += 1;
@@ -30,13 +30,23 @@ export function startGameLoop(ctx: PlayCtx, ls: LocalState) {
     const mag = Math.hypot(vx, vy);
     if (mag > 0) { vx /= mag; vy /= mag; }
 
-    // Pas discret si prêt
+    // Tick de mouvement => on envoie une INTENTION (Δx, Δy) au serveur
     if (ctx.uid && moveReady(ctx) && mag > 0) {
-      const step = stepUnits(ctx);
-      const nx = Math.max(-50, Math.min(50, ctx.me.x + Math.round(vx * step)));
-      const ny = Math.max(-50, Math.min(50, ctx.me.y + Math.round(vy * step)));
-      ctx.me.x = nx; ctx.me.y = ny;
-      ctx.positions.writeSelf(ctx.matchId, ctx.uid, nx, ny, ctx.role as string);
+      const step = stepUnits(ctx);                       // taille du pas par tick
+      const dx = Math.round(vx * step);
+      const dy = Math.round(vy * step);
+
+      // 🔮 PRÉDICTION LOCALE (facultative mais recommandée)
+      const nx = Math.max(-50, Math.min(50, ctx.me.x + dx));
+      const ny = Math.max(-50, Math.min(50, ctx.me.y + dy));
+      ctx.me.x = nx;
+      ctx.me.y = ny;
+
+      // 🚀 ENVOI D’INTENTION au serveur autoritaire (Cloud Function onIntent)
+      // -> Assure-toi d’avoir implémenté PositionsService.sendIntent(...)
+      ctx.positions.sendIntent(ctx.matchId, ctx.uid, dx, dy, ctx.role as string)
+        .catch(() => { /* best-effort, on ne bloque pas l’UI */ });
+
       ctx.lastMoveAt = performance.now();
     }
 

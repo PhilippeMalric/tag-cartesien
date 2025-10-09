@@ -18,11 +18,11 @@
       "$matchId": {
         "$uid": {
           ".read": "auth != null",
-          ".write": "auth != null && auth.uid === $uid || auth.token.admin === true",
+          ".write": "(auth != null && auth.uid === $uid) || auth.token.admin === true",
           "x": { ".validate": "newData.isNumber()" },
           "y": { ".validate": "newData.isNumber()" },
           "t": { ".validate": "newData.isNumber()" },
-          "role":  { ".validate": "newData.isString()" }, 
+          "role": { ".validate": "newData.isString()" },
           "$other": { ".validate": false }
         }
       }
@@ -40,7 +40,7 @@
       }
     },
 
-      "bots": {
+    "bots": {
       "$roomId": {
         "$botId": {
           ".read": "auth != null",
@@ -50,7 +50,7 @@
           "t": { ".validate": "newData.isNumber()" },
           "name": { ".validate": "newData.isString()" },
           "role": { ".validate": "newData.isString()" },
-          "type": { ".validate": "newData.isString()" },   
+          "type": { ".validate": "newData.isString()" },
           "random": { ".validate": "newData.isBoolean()" },
           "$other": { ".validate": false }
         }
@@ -61,8 +61,23 @@
       ".indexOn": ["updatedAt"],
       "$roomId": {
         ".read": "auth != null",
-        ".write": "auth != null && (root.child('roomsMeta').child($roomId).child('ownerUid').val() === auth.uid || auth.token.admin === true)",
+        ".write": "(auth != null && root.child('roomsMeta').child($roomId).child('ownerUid').val() === auth.uid) || auth.token.admin === true",
         "updatedAt": { ".validate": "newData.isNumber()" },
+
+        "intents": {
+          "$uid": {
+            "$seq": {
+              ".read": "(auth != null && auth.uid === $uid) || auth.token.admin === true",
+              ".write": "auth != null && auth.uid === $uid",
+              "vx": { ".validate": "newData.isNumber()" },
+              "vy": { ".validate": "newData.isNumber()" },
+              "t":  { ".validate": "newData.isNumber()" },
+              "role": { ".validate": "!newData.exists() || newData.isString()" },
+              "$other": { ".validate": false }
+            }
+          }
+        },
+
         "$other": { ".validate": false }
       }
     }
