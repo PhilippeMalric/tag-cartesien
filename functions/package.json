@@ -9,7 +9,7 @@
     "deploy": "npm run build && firebase deploy --only functions",
     "build": "tsc -p tsconfig.json",
     "lint": "eslint \"src/**/*.ts\"",
-    
+    "get:types": "node scripts/concat-files.mjs C:/Users/malri/tag-cartesien/libs ./snapshot_types.txt",
     "get:lobby": "node scripts/concat-files.mjs C:/Users/malri/tag-cartesien/src/app/pages/lobby ./snapshot_lobby.txt",
     "get:room": "node scripts/concat-files.mjs C:/Users/malri/tag-cartesien/src/app/pages/room ./snapshot_room.txt",
     "get:play": "node scripts/concat-files.mjs C:/Users/malri/tag-cartesien/src/app/pages/play ./snapshot_play.txt",

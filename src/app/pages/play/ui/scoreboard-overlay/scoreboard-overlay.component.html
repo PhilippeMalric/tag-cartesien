@@ -35,7 +35,7 @@
           <span class="emoji" *ngIf="p.isHunter" title="Chasseur">👑</span>
           <span class="name" [class.self]="p.isSelf">{{ p.displayName }}</span>
           <span class="chip chip-me" *ngIf="p.isSelf">toi</span>
-          <span class="chip chip-role" *ngIf="!p.isHunter && p.role === 'chassé'">chassé</span>
+          <span class="chip chip-role" *ngIf="!p.isHunter && p.role === 'prey'">chassé</span>
         </div>
 
         <div class="col-score">

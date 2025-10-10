@@ -11,24 +11,7 @@ import {
   query,
 } from '@angular/fire/firestore';
 import { Observable, combineLatest, map, shareReplay } from 'rxjs';
-import { RoomDoc } from '../../../room/room.imports';
-
-export type PlayerDoc = {
-  uid?: string;
-  displayName?: string;
-  score?: number;
-  role?: 'chasseur' | 'chassé';
-  combo?: number; // (optionnel si tu l’ajoutes plus tard)
-};
-
-export type TagEvent = {
-  type?: 'tag';
-  hunterUid?: string;
-  victimUid?: string;
-  ts?: any; // Firestore Timestamp
-};
-
-
+import type { RoomDoc, PlayerDoc, EventItem, Role, GameMode } from '@tag/types';
 
 export type PlayerVM = {
   uid: string;
@@ -36,13 +19,13 @@ export type PlayerVM = {
   score: number;
   isBot: boolean;
   isSelf: boolean;
-  role: 'chasseur' | 'chassé' | null;
+  role: Role | null;     // ← 'hunter' | 'prey' | null (depuis @tag/types)
   isHunter: boolean;
   justScored: boolean;
 };
 
 type HeaderVM = {
-  mode: string;
+  mode: GameMode;        // ← typé @tag/types
   targetScore?: number;
   playersCount: number;
   hunterUid?: string | null;
@@ -66,16 +49,23 @@ export class ScoreboardAdapterService {
     );
   }
 
-  private players$(roomId: string): Observable<PlayerDoc[]> {
+  // On récupère les joueurs avec un idField 'uid' pour que l'UI l'ait directement.
+  private players$(roomId: string): Observable<Array<PlayerDoc & { uid: string }>> {
     const col = collection(this.fs, `rooms/${roomId}/players`);
     const q = query(col, orderBy('score', 'desc'), limit(50));
-    return collectionData(q, { idField: 'uid' }) as Observable<PlayerDoc[]>;
+    return collectionData(q, { idField: 'uid' }) as unknown as Observable<
+      Array<PlayerDoc & { uid: string }>
+    >;
   }
 
-  private events$(roomId: string): Observable<TagEvent[]> {
+  // Les événements utilisent @tag/types :
+  // - type: 'tag/hit'
+  // - createdAt: Firestore Timestamp (unknown côté types)
+  // - payload: { byUid, targetUid, mode }
+  private events$(roomId: string): Observable<EventItem[]> {
     const col = collection(this.fs, `rooms/${roomId}/events`);
-    const q = query(col, orderBy('ts', 'desc'), limit(150));
-    return collectionData(q) as Observable<TagEvent[]>;
+    const q = query(col, orderBy('createdAt', 'desc'), limit(150));
+    return collectionData(q) as unknown as Observable<EventItem[]>;
   }
 
   /** VM d’en-tête (mode, objectif, etc.) */
@@ -84,9 +74,9 @@ export class ScoreboardAdapterService {
       map(([room, players]) => {
         const roles = room?.roles ?? {};
         const hunterUid =
-          Object.keys(roles).find((k) => roles[k] === 'chasseur') ?? null;
+          Object.keys(roles).find((k) => roles[k] === 'hunter') ?? null;
         return {
-          mode: room?.mode ?? 'classic',
+          mode: (room?.mode ?? 'classic') as GameMode,
           targetScore: room?.targetScore,
           playersCount: players?.length ?? 0,
           hunterUid,
@@ -105,16 +95,20 @@ export class ScoreboardAdapterService {
       this.header$(roomId),
     ]).pipe(
       map(([players, events, uid, header]) => {
-        // Détermine qui a scoré récemment (dans les ~5 dernières secondes)
+        // Détermine qui a scoré récemment (dans ~5s) à partir d'EventItem 'tag/hit'
         const now = Date.now();
         const RECENT_MS = 5000;
         const recentScorers = new Set<string>();
+
         for (const e of events ?? []) {
-          const tsMs =
-            (e as any)?.ts?.toMillis?.() ??
-            ((e as any)?.ts?.seconds ? (e as any).ts.seconds * 1000 : 0);
-          if (e?.type === 'tag' && tsMs && now - tsMs <= RECENT_MS && e.hunterUid) {
-            recentScorers.add(e.hunterUid);
+          // createdAt peut être un Timestamp Firestore → toMillis() si dispo
+          const createdMs =
+            (e as any)?.createdAt?.toMillis?.() ??
+            ((e as any)?.createdAt?.seconds ? (e as any).createdAt.seconds * 1000 : 0);
+
+          if (e?.type === 'tag/hit' && createdMs && now - createdMs <= RECENT_MS) {
+            const by = (e as any)?.payload?.byUid as string | undefined;
+            if (by) recentScorers.add(by);
           }
         }
 
@@ -122,23 +116,27 @@ export class ScoreboardAdapterService {
         const hunterUid = header.hunterUid ?? null;
 
         const rows: PlayerVM[] = (players ?? []).map((p) => {
-          const score = Number(p?.score ?? 0);
+          const score = Number((p as any)?.score ?? 0);
           const isBot =
-            typeof p?.uid === 'string' &&
-            (p.uid.startsWith('bot-') || (p.displayName ?? '').includes('🤖'));
-          const isSelf = !!uid && p?.uid === uid;
-          const role = (p?.role as any) ?? null;
-          const isHunter = !!hunterUid && p?.uid === hunterUid;
+            typeof (p as any)?.uid === 'string' &&
+            ((p as any).uid.startsWith('bot-') ||
+              ((p as any).displayName ?? '').includes('🤖'));
+          const isSelf = !!uid && (p as any)?.uid === uid;
+          const role = ((p as any)?.role as Role | undefined) ?? null;
+          const isHunter = !!hunterUid && (p as any)?.uid === hunterUid;
+
+          const uidStr = (p as any)?.uid ?? 'unknown';
+          const name = (p as any)?.displayName || uidStr.slice(0, 6) || 'Joueur';
 
           return {
-            uid: p?.uid ?? 'unknown',
-            displayName: p?.displayName || p?.uid?.slice(0, 6) || 'Joueur',
+            uid: uidStr,
+            displayName: name,
             score,
             isBot,
             isSelf,
             role,
             isHunter,
-            justScored: !!(p?.uid && recentScorers.has(p.uid)),
+            justScored: !!(uidStr && recentScorers.has(uidStr)),
           };
         });
 

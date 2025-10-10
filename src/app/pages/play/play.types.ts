@@ -4,7 +4,9 @@ import { Auth as FirebaseAuth } from '@angular/fire/auth';
 
 import { PositionsService } from './positions.service';
 import { MatchService } from './match.service';
-import {  Role, RoomService } from '../room/room.service';
+import {   RoomService } from '../room/room.service';
+
+import type { Role } from '@tag/types';
 import { BotService } from './bot.service';
 
 import { OtherPos, Pos } from './play.models';

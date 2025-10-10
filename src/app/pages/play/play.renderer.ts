@@ -189,7 +189,7 @@ export class PlayRenderer {
     }
 
     // 🟠 tolère EN/FR pour “moi”
-    const amHunter = state.role === 'chasseur' || state.role === 'hunter';
+    const amHunter =  state.role === 'hunter';
 
     // Moi (orange si chasseur, sinon bleu)
     ctx.fillStyle = amHunter ? colorHunter : colorSelf;

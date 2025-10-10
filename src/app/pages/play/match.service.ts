@@ -1,10 +1,14 @@
 import { Injectable, inject } from '@angular/core';
 import { authState, Auth as FirebaseAuth } from '@angular/fire/auth';
-import { Firestore, doc, docData, collection, collectionData, updateDoc, query, orderBy, limit, getDoc, addDoc, serverTimestamp } from '@angular/fire/firestore';
+import {
+  Firestore,
+  doc, docData, collection, collectionData,
+  updateDoc, query, orderBy, limit, getDoc, addDoc, serverTimestamp
+} from '@angular/fire/firestore';
 
 import { Observable, firstValueFrom, map, shareReplay } from 'rxjs';
-import { MyPlayerDoc,  TagEvent } from './play.models';
-import { RoomDoc } from '../../models/room.model';
+import { MyPlayerDoc } from './play.models'; // on garde ton type UI local
+import type { RoomDoc, GameMode, Role, EventItem } from '@tag/types';
 
 @Injectable({ providedIn: 'root' })
 export class MatchService {
@@ -33,14 +37,15 @@ export class MatchService {
     );
   }
 
-  events$ = (matchId: string): Observable<TagEvent[]> => {
-    const eventsCol = collection(this.fs, `rooms/${matchId}/events`);
-    const qEvents = query(eventsCol, orderBy('ts', 'desc'), limit(20));
-    return collectionData(qEvents, { idField: 'id' }).pipe(
-      map(list => [...(list as TagEvent[])].reverse()),
-      shareReplay({ bufferSize: 1, refCount: true })
-    );
-  }
+  /** Flux d'événements typés @tag/types (ordre récent → ancien dans la collection) */
+events$ = (matchId: string): Observable<EventItem[]> => {
+  const col = collection(this.fs, `rooms/${matchId}/events`);
+  const q  = query(col, orderBy('ts', 'desc'), limit(50));
+  return collectionData(q, { idField: 'id' }).pipe(
+    map(list => (list as EventItem[]).slice().reverse()),
+    shareReplay({ bufferSize: 1, refCount: true })
+  );
+};
 
   private async getPlayer(matchId: string, uid: string) {
     const ref = doc(this.fs, `rooms/${matchId}/players/${uid}`);
@@ -53,28 +58,27 @@ export class MatchService {
     if (!uid) return;
     const now = Date.now();
 
-    // ⛔️ NEW: règle "sans retag"
-    const me = await this.getPlayer(matchId, uid); // déjà existant chez toi
+    // ⛔️ règle "sans retag"
+    const me = await this.getPlayer(matchId, uid);
     if (me?.noRetagUid === victimUid && me?.noRetagUntilMs && now < me.noRetagUntilMs) {
       const err: any = new Error('no-retag');
       err.retryInMs = me.noRetagUntilMs - now;
-      throw err; // à gérer côté UI (petit toast)
+      throw err;
     }
 
-    // (garde "lock" globale existante)
+    // cooldown côté joueur
     if (me?.cantTagUntilMs && now < me.cantTagUntilMs) {
       const err: any = new Error('cant-tag-cooldown');
       err.retryInMs = me.cantTagUntilMs - now;
       throw err;
     }
-console.log("me?.role",me?.role);
 
-    // (optionnel) vérifie rôle chasseur
-    if (me?.role !== 'chasseur' && me?.role !== 'hunter') {
+    // rôle chasseur (tolère ancien FR mais cible EN)
+    if (me?.role !== 'hunter') {
       throw new Error('not-hunter');
     }
 
-    // 🔒 Garde LOCALE anti double-émission
+    // 🔒 anti double-émission locale
     const lastLocal = this._lastEmitByHunter.get(uid) ?? 0;
     if (now - lastLocal < this.EMIT_COOLDOWN_MS) {
       const err: any = new Error('emit-cooldown');
@@ -82,18 +86,24 @@ console.log("me?.role",me?.role);
       throw err;
     }
 
-    // 🟢 Arme le cooldown local tout de suite, rollback si échec
+    // 🟢 armer le cooldown local tout de suite
     this._lastEmitByHunter.set(uid, now);
     try {
-      console.log(`[Match] emitTag ${uid} → ${victimUid} @${x.toFixed(1)},${y.toFixed(1)}`);
-      
+      // lire le mode pour payload
+      const roomSnap = await getDoc(doc(this.fs, `rooms/${matchId}`));
+      const mode = (roomSnap.data()?.['mode'] ?? 'classic') as GameMode;
+
       await addDoc(collection(this.fs, `rooms/${matchId}/events`), {
-        type: 'tag',
-        hunterUid: uid,
-        victimUid,
-        x, y,
-        ts: serverTimestamp(),
-      });
+        type: 'tag/hit',
+        createdAt: serverTimestamp(),
+        payload: {
+          byUid: uid,
+          targetUid: victimUid,
+          mode,
+          // si utile: inclure la position dans le payload
+          x, y,
+        },
+      } as any);
     } catch (e) {
       this._lastEmitByHunter.delete(uid);
       throw e;
@@ -122,11 +132,8 @@ console.log("me?.role",me?.role);
   }
 
   async getMyPlayerIdFromAuth(): Promise<string> {
-    
-    // essaie d’abord le courant
     const cur = this.auth.currentUser?.uid;
     if (cur) return cur;
-    // sinon attends le prochain authState
     const u = await firstValueFrom(authState(this.auth));
     return u?.uid ?? '';
   }
@@ -136,6 +143,4 @@ console.log("me?.role",me?.role);
     const q = query(col, orderBy('score', 'desc'), limit(top));
     return collectionData(q, { idField: 'uid' }) as any;
   }
-
-
 }

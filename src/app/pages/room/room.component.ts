@@ -1,21 +1,43 @@
+// src/app/pages/room/room.component.ts
 import {
-  Component, ChangeDetectionStrategy, inject, Input, OnInit, OnDestroy,
-  EnvironmentInjector, runInInjectionContext, ChangeDetectorRef, NgZone, DestroyRef
+  Component,
+  ChangeDetectionStrategy,
+  OnInit,
+  OnDestroy,
+  EnvironmentInjector,
+  ChangeDetectorRef,
+  NgZone,
+  DestroyRef,
+  inject,
+  runInInjectionContext,
+  input,
 } from '@angular/core';
+
 import { Router, ActivatedRoute } from '@angular/router';
 import { AsyncPipe, CommonModule } from '@angular/common';
+
 import {
-  Observable, Subscription, combineLatest, of, Subject, firstValueFrom
+  Observable,
+  Subscription,
+  Subject,
+  combineLatest,
+  firstValueFrom,
+  of,
 } from 'rxjs';
 import {
-  map, filter, take, shareReplay, debounceTime, distinctUntilChanged,
-  switchMap, startWith,
+  map,
+  shareReplay,
+  debounceTime,
+  distinctUntilChanged,
+  startWith,
   tap,
-  auditTime
+  auditTime,
 } from 'rxjs/operators';
+
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
-// Material
+// Angular Material
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -26,32 +48,27 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatSelectModule } from '@angular/material/select';
 import { MatDividerModule } from '@angular/material/divider';
-import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
-// Auth
+// Firebase Auth
 import { Auth as FirebaseAuth, signInAnonymously } from '@angular/fire/auth';
-import { authState } from '@angular/fire/auth';
 
-// Modèles & services
-import { Player } from './player.model';
-import { Role, RoomService } from './room.service';
-import { RoomDoc } from '../../models/room.model';
+// Tes éléments/app spécifiques (ok de garder le barrel pour ceux-ci)
+import {
+  MapPickerComponent,
+  SpawnCoordService,
+  OwnerActionsService,
+  RoomLogger,
+} from './room.imports';
 
-// UI
-import { MapPickerComponent } from './ui/map-picker.component';
-
-// Spawn (signals partagés)
-import { SpawnCoordService } from '../../services/spawn-coord.service';
-import { OwnerActionsService } from './owner-actions.service';
-import { RoomLogger } from './room-logger';
-import { inZone } from './in-zone.operator';
+// Types & services locaux
+import type { Player } from './player.model';
+import type { RoomDoc } from '@tag/types';
+import { RoomService } from './room.service';
 import { PositionsService } from '../play';
 
-// Utils (extraits pour nettoyer le composant)
-
+// --- UI role mapping (FR <-> EN d’affichage) ---
 type HunterScope = 'all' | 'ready';
-
 type RoleFR = 'chasseur' | 'chassé';
 type RoleAny = RoleFR | 'hunter' | 'prey';
 
@@ -68,44 +85,47 @@ function toFR(r: RoleAny | null | undefined): RoleFR | null {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.Default,
   imports: [
-    AsyncPipe, CommonModule,
+    CommonModule, AsyncPipe,
     MatToolbarModule, MatButtonModule, MatIconModule,
     MatCardModule, MatListModule, MatProgressBarModule, MatTooltipModule,
     MatMenuModule, MatSelectModule, MatDividerModule, MatProgressSpinnerModule,
-    MapPickerComponent
+    MapPickerComponent,
   ],
   templateUrl: './room.component.html',
   styleUrls: ['./room.component.scss'],
 })
 export class RoomComponent implements OnInit, OnDestroy {
   // --- Injections
-  private readonly router   = inject(Router);
-  private readonly route    = inject(ActivatedRoute);
-  private readonly env      = inject(EnvironmentInjector);
-  protected readonly auth   = inject(FirebaseAuth);
-  private readonly roomSvc  = inject(RoomService);
-  private readonly snack    = inject(MatSnackBar);
-  private readonly cdr      = inject(ChangeDetectorRef);
-  private readonly zone     = inject(NgZone);
-  private readonly destroyRef = inject(DestroyRef);
+  private readonly router       = inject(Router);
+  private readonly route        = inject(ActivatedRoute);
+  private readonly env          = inject(EnvironmentInjector);
+  protected readonly auth       = inject(FirebaseAuth);
+  private readonly roomSvc      = inject(RoomService);
+  private readonly snack        = inject(MatSnackBar);
+  private readonly cdr          = inject(ChangeDetectorRef);
+  private readonly zone         = inject(NgZone);
+  private readonly destroyRef   = inject(DestroyRef);
   private readonly ownerActions = inject(OwnerActionsService);
-readonly positions = inject(PositionsService);
+  readonly positions            = inject(PositionsService);
 
-  // --- Entrées
-  @Input() roomId = '';
-  @Input() isOwner = false; // fallback si fourni par parent
+  // --- Inputs (APIs fonctionnelles)
+  roomId  = input<string>('');     // fourni par parent (optionnel)
+  isOwner = input<boolean>(false); // fallback éventuel
+
+  /** Résolution interne de l’ID effectif de room (input ou URL). */
+  private roomIdResolved = '';
 
   // --- Services exposés au template
   public readonly spawn = inject(SpawnCoordService);
 
   // --- Observables exposés au template
-  public players$: Observable<Player[]> = of([]);
-  public room$:    Observable<RoomDoc | null> = of(null);
-  public playersVM$: Observable<PlayerVM[]> = of([]);
-  public isOwner$!: Observable<boolean>;
+  public players$:   Observable<Player[]>       = of([]);
+  public room$:      Observable<RoomDoc | null> = of(null);
+  public playersVM$: Observable<PlayerVM[]>     = of([]);
+  public isOwner$!:  Observable<boolean>;
   public canStart$!: Observable<boolean>;
 
-  public myRole$!: Observable<Role | null>;
+  public myRole$!: Observable<RoleFR | null>;
 
   // --- État UI exposé
   public myReady = false;
@@ -122,30 +142,26 @@ readonly positions = inject(PositionsService);
   private logger = new RoomLogger(w => (this.writes = w));
   private saveSpawn$ = new Subject<{ x: number; y: number }>();
   private subs = new Subscription();
-  myRole!: string | null;
+  myRole!: RoleFR | null;
 
   private log(msg: string) { this.logger.log(msg); }
 
-
-
-
   async ngOnInit(): Promise<void> {
-    // --- Helpers log ----------------------------------------------------------
-    const tag = (phase: string) => `[RoomInit/${phase}]`;
+    const tag  = (phase: string) => `[RoomInit/${phase}]`;
     const logI = (...a: any[]) => console.info(...a);
     const logW = (...a: any[]) => console.warn(...a);
     const logE = (...a: any[]) => console.error(...a);
 
-    // --- 0) Param route -------------------------------------------------------
-    if (!this.roomId) this.roomId = this.route.snapshot.paramMap.get('id') ?? '';
-    if (!this.roomId) {
+    // 0) Param route + résolution de l'id effectif
+    this.roomIdResolved = this.roomId() || this.route.snapshot.paramMap.get('id') || '';
+    if (!this.roomIdResolved) {
       logW(tag('route'), 'Aucun roomId dans l’URL → redirect /lobby');
       this.router.navigate(['/lobby']);
       return;
     }
-    logI(tag('route'), 'roomId =', this.roomId);
+    logI(tag('route'), 'roomId =', this.roomIdResolved);
 
-    // --- 1) Auth + ensure player doc -----------------------------------------
+    // 1) Auth + ensure player doc
     try {
       await runInInjectionContext(this.env, async () => {
         if (!this.auth.currentUser) {
@@ -155,33 +171,35 @@ readonly positions = inject(PositionsService);
         const uid = this.auth.currentUser!.uid;
         const displayName = this.auth.currentUser?.displayName || 'Joueur';
 
-        logI(tag('player.ensure'), `ensureSelfPlayerDoc(room=${this.roomId}, uid=${uid}, name=${displayName})`);
-        await this.roomSvc.ensureSelfPlayerDoc(this.roomId, uid, displayName);
+        logI(tag('player.ensure'), `ensureSelfPlayerDoc(room=${this.roomIdResolved}, uid=${uid}, name=${displayName})`);
+        await this.roomSvc.ensureSelfPlayerDoc(this.roomIdResolved, uid, displayName);
         logI(tag('player.ensure'), 'OK');
       });
     } catch (e: any) {
       logE(tag('player.ensure'), 'ERREUR →', e?.message || e);
     }
 
-    // --- 2) Flux réactifs (création + logs + subscriptions) ------------------
+    // 2) Flux réactifs
     runInInjectionContext(this.env, () => {
       // Flux bruts
-     this.room$ = this.roomSvc.room$(this.roomId).pipe(
-      startWith({ roles: {}, state: 'idle' } as any), // évite d’attendre la 1ʳᵉ valeur
-      shareReplay({ bufferSize: 1, refCount: true })
-    );
+      this.room$ = this.roomSvc.room$(this.roomIdResolved).pipe(
+        startWith({ roles: {}, state: 'idle' } as any),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
 
-    this.players$ = this.roomSvc.players$(this.roomId).pipe(
-      startWith([] as Player[]),                      // idem
-      shareReplay({ bufferSize: 1, refCount: true })
-    );
+      this.players$ = this.roomSvc.players$(this.roomIdResolved).pipe(
+        startWith([] as Player[]),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
 
       // Propriétaire ?
       const uid = this.auth.currentUser?.uid ?? '';
       this.isOwner$ = this.room$.pipe(
-        map(room => !!room && room.ownerUid === uid),
-        tap(isOwner => logI(tag('isOwner$'), isOwner ? 'Tu es OWNER de la room' : 'Tu N’ES PAS OWNER')),
-        startWith(false),
+        map(room => !!room && room.ownerUid === uid),      // boolean
+        startWith<boolean>(false),
+        tap((isOwner: boolean) =>
+          logI(tag('isOwner$'), isOwner ? 'Tu es OWNER de la room' : 'Tu N’ES PAS OWNER')
+        ),
         shareReplay({ bufferSize: 1, refCount: true })
       );
 
@@ -190,77 +208,76 @@ readonly positions = inject(PositionsService);
         map(([players, room]) =>
           !!room &&
           room.state !== 'running' &&
-          room.state !== 'in-progress' &&
           Array.isArray(players) &&
           players.length >= 2 &&
           players.every(p => !!p.ready)
         ),
-        tap(can => logI(tag('canStart$'), can ? '✅ prêt à démarrer' : '⏳ conditions non remplies')),
-        startWith(false),
+        startWith<boolean>(false),
+        tap((can: boolean) =>
+          logI(tag('canStart$'), can ? '✅ prêt à démarrer' : '⏳ conditions non remplies')
+        ),
         shareReplay({ bufferSize: 1, refCount: true })
       );
 
       // Vue joueurs (humains + bots déduits)
-    this.playersVM$ = combineLatest([this.players$, this.room$]).pipe(
-              map(([players, room]): PlayerVM[] => {
-                const rolesRaw = (room?.roles ?? {}) as Record<string, RoleAny | undefined>;
+      this.playersVM$ = combineLatest([this.players$, this.room$]).pipe(
+        map(([players, room]): PlayerVM[] => {
+          const rolesRaw = (room?.roles ?? {}) as Record<string, RoleAny | undefined>;
 
-                // HUMANS → roleResolved = toFR(p.role) UNIQUEMENT
-                const humans: PlayerVM[] = (players ?? []).map(p => ({
-                  uid: p.uid,
-                  displayName: p.displayName ?? p.uid,
-                  ready: !!p.ready,
-                  role: p.role as RoleAny | undefined,         // brut du player
-                  roleResolved: toFR(p.role),                  // ← pas de fallback room/hunterUid
-                  score: p.score ?? 0,
-                  iFrameUntilMs: (p as any).iFrameUntilMs,
-                  spawn: (p as any).spawn,
-                  cantTagUntilMs: (p as any).cantTagUntilMs,
-                }));
+          // HUMANS → roleResolved = toFR(p.role) uniquement
+          const humans: PlayerVM[] = (players ?? []).map(p => ({
+            uid: p.uid,
+            displayName: p.displayName ?? p.uid,
+            ready: !!p.ready,
+            role: p.role as RoleAny | undefined,
+            roleResolved: toFR(p.role),
+            score: p.score ?? 0,
+            iFrameUntilMs: (p as any).iFrameUntilMs,
+            spawn: (p as any).spawn,
+            cantTagUntilMs: (p as any).cantTagUntilMs,
+          }));
 
-                // BOTS → pas de doc player, on garde room.roles
-                const humanUids = new Set(humans.map(p => p.uid));
-                const botUids = Object.keys(rolesRaw).filter(uid => uid.startsWith('bot-') && !humanUids.has(uid));
+          // BOTS → pas de doc player, on garde room.roles
+          const humanUids = new Set(humans.map(p => p.uid));
+          const botUids = Object.keys(rolesRaw).filter(uid => uid.startsWith('bot-') && !humanUids.has(uid));
 
-                const bots: PlayerVM[] = botUids.map(uid => {
-                  const role = rolesRaw[uid];
-                  return {
-                    uid,
-                    displayName: `🤖 Bot ${uid.slice(-4).toUpperCase()}`,
-                    ready: true,
-                    role,
-                    roleResolved: toFR(role),
-                    score: 0,
-                  };
-                });
+          const bots: PlayerVM[] = botUids.map(uid => {
+            const role = rolesRaw[uid];
+            return {
+              uid,
+              displayName: `🤖 Bot ${uid.slice(-4).toUpperCase()}`,
+              ready: true,
+              role,
+              roleResolved: toFR(role),
+              score: 0,
+            };
+          });
 
-                humans.sort((a, b) => (a.displayName || a.uid).localeCompare(b.displayName || b.uid));
-                bots.sort((a, b) => (a.displayName || a.uid).localeCompare(b.displayName || b.uid));
-                return humans.concat(bots);
-              }),
-              auditTime(16)
-            );
-
+          humans.sort((a, b) => (a.displayName || a.uid).localeCompare(b.displayName || b.uid));
+          bots.sort((a, b) => (a.displayName || a.uid).localeCompare(b.displayName || b.uid));
+          return humans.concat(bots);
+        }),
+        auditTime(16)
+      );
     });
 
     // Déclenche CD quand playersVM$ émet (utile pour les templates OnPush)
     this.playersVM$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
-        logI(tag('cd'), 'detectChanges()');
         this.cdr.detectChanges();
       });
-      
+
+    // Mon rôle (FR) basé sur players$
+    {
       const uid = this.auth.currentUser!.uid;
       this.myRole$ = this.players$.pipe(
         map(players => toFR(players?.find(p => p.uid === uid)?.role)),
         startWith(null),
         shareReplay({ bufferSize: 1, refCount: true })
       );
-
-      // (facultatif) garder une copie sync
       this.subs.add(this.myRole$.subscribe(r => this.myRole = r));
-
+    }
 
     // Suivre mon état ready
     this.subs.add(
@@ -270,24 +287,17 @@ readonly positions = inject(PositionsService);
         const me = ps.find(p => p.uid === myUid);
         if (typeof me?.ready === 'boolean') {
           this.myReady = me.ready;
-          logI(tag('self.ready'), `myReady = ${this.myReady}`);
         }
       })
     );
 
-    // Navigation auto quand la partie démarre
+    // Navigation auto quand la partie démarre + sync mode
     this.subs.add(
       this.room$.subscribe(r => {
         if (!r) return;
         const oldMode = this.mode;
-        if (r.mode && r.mode !== oldMode) {
-          this.mode = r.mode;
-          logI(tag('mode'), `mode: ${oldMode ?? '∅'} → ${this.mode}`);
-        }
-        if (r.state === 'running' || r.state === 'in-progress') {
-          logI(tag('nav'), `state=${r.state} → /play/${this.roomId}`);
-          this.router.navigate(['/play', this.roomId]);
-        }
+        if (r.mode && r.mode !== oldMode) this.mode = r.mode;
+        if (r.state === 'running') this.router.navigate(['/play', this.roomIdResolved]);
       })
     );
 
@@ -301,18 +311,13 @@ readonly positions = inject(PositionsService);
         .subscribe(async (xy) => {
           const uid = this.auth.currentUser?.uid; if (!uid) return;
           try {
-            logI(tag('spawn'), `setMySpawn(${xy.x}, ${xy.y})`);
-            await this.roomSvc.setMySpawn(this.roomId, uid, xy);
-            logI(tag('spawn'), 'OK');
+            await this.roomSvc.setMySpawn(this.roomIdResolved, uid, xy);
           } catch (e: any) {
-            logE(tag('spawn'), 'ERREUR →', e?.message || e);
+            this.log(`spawn — ERREUR: ${e?.message || e}`);
           }
         })
     );
-
-    logI(tag('done'), 'Initialisation terminée ✔️');
   }
-
 
   ngOnDestroy(): void {
     this.subs.unsubscribe();
@@ -328,7 +333,7 @@ readonly positions = inject(PositionsService);
     const uid = this.auth.currentUser?.uid;
     if (!uid) return;
     try {
-      await this.roomSvc.toggleReady(this.roomId, uid, !this.myReady);
+      await this.roomSvc.toggleReady(this.roomIdResolved, uid, !this.myReady);
       this.log(`FS toggleReady(${!this.myReady})`);
       this.myReady = !this.myReady; // MAJ optimiste
     } catch (e: any) {
@@ -340,7 +345,7 @@ readonly positions = inject(PositionsService);
     if (this.isStarting) return;
     this.isStarting = true;
     try {
-      await this.roomSvc.start(this.roomId); // assigne les rôles + passe à running
+      await this.roomSvc.start(this.roomIdResolved); // assigne les rôles + passe à running
       this.log('FS start() → state="running"');
     } catch (e: any) {
       this.log(`start() — ERREUR: ${e?.message || e}`);
@@ -355,7 +360,7 @@ readonly positions = inject(PositionsService);
     this.pickingHunter = true;
     try {
       const players = await firstValueFrom(this.playersVM$);
-      const picked = await this.ownerActions.applyRandomHunter(this.roomId, players ?? [], scope);
+      const picked = await this.ownerActions.applyRandomHunter(this.roomIdResolved, players ?? [], scope);
       this.lastPickedHunter = picked || null;
       const name = picked?.displayName || picked?.uid || 'inconnu';
       this.snack.open(`Chasseur choisi : ${name}`, 'OK', { duration: 2500 });
@@ -368,7 +373,7 @@ readonly positions = inject(PositionsService);
 
   public async setMode(m: 'classic'|'infection'|'transmission') {
     try {
-      await this.roomSvc.setMode(this.roomId, m);
+      await this.roomSvc.setMode(this.roomIdResolved, m);
       this.mode = m;
       this.log(`FS setMode(${m})`);
     } catch (e: any) {
@@ -378,7 +383,7 @@ readonly positions = inject(PositionsService);
 
   public async endNow() {
     try {
-      await this.roomSvc.setState(this.roomId, 'ended');
+      await this.roomSvc.setState(this.roomIdResolved, 'ended');
       this.log('FS setState(ended)');
     } catch (e: any) {
       this.log(`endNow — ERREUR: ${e?.message || e}`);
@@ -392,14 +397,14 @@ readonly positions = inject(PositionsService);
 
     const uid = this.auth.currentUser?.uid;
     if (uid) {
-      const role = /* récupère le rôle courant du joueur si dispo */ undefined;
-      this.positions.writeSelf(this.roomId, uid, xy.x, xy.y, this.myRole as string);
+      // rôle affiché (FR) stocké localement → on le transmet tel quel à PositionsService
+      this.positions.writeSelf(this.roomIdResolved, uid, xy.x, xy.y, this.myRole as string);
     }
   }
 
   /** Bouton toggle chasseur (owner) */
   public async onToggleHunter(targetUid: string, isCurrentlyHunter: boolean): Promise<void> {
-    const roomId = this.roomId;
+    const roomId = this.roomIdResolved;
     if (!roomId) return;
 
     const getAllPlayers = async () => {
@@ -429,29 +434,18 @@ readonly positions = inject(PositionsService);
       this.log(`toggleHunterMulti — ERREUR: ${e?.message || e}`);
     }
   }
+
   trackByUid = (_: number, item: { uid?: string; id?: string }) =>
     item?.uid ?? item?.id ?? _;
 }
-// helper (en dehors de la classe)
-function normalizeRole(r?: string | null): Role | null {
-  if (!r) return null;
-  if (r === 'hunter' || r === 'chasseur') return 'chasseur';
-  if (r === 'prey'   || r === 'chassé')   return 'chassé';
-  return null; // autre valeur => null
-}
 
-function resolveMyRole(uid: string, players: Player[] | null | undefined, roles: Record<string, Role | undefined> | null | undefined): Role | null {
-  const fromPlayers = (players ?? []).find(p => p.uid === uid)?.role ?? null;
-  const fromRoomMap = roles?.[uid] ?? null;
-  return normalizeRole(fromPlayers ?? fromRoomMap);
-}
-
+// ---- Types UI pour l’affichage ----
 export interface PlayerVM {
   uid: string;
   displayName: string;
   ready: boolean;
-  role?: RoleAny;                 // brut tel que stocké au player/room (optionnel)
-  roleResolved: RoleFR | null;    // normalisé FR et priorisé room
+  role?: RoleAny;              // brut tel que stocké au player/room (optionnel)
+  roleResolved: RoleFR | null; // normalisé FR (affichage)
   score: number;
   iFrameUntilMs?: number;
   spawn?: { x: number; y: number };

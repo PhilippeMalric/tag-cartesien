@@ -1,12 +1,10 @@
-import { Role } from "./room.service";
+import type { PlayerDoc, Role } from '@tag/types';
 
-export type Player = {
-  uid: string;
-  displayName: string;
+export type Player = PlayerDoc & {
+  uid: string;                   // idField injecté côté client
+  displayName: string;           // si tu veux forcer required côté UI
   ready?: boolean;
   role?: Role;
   score?: number;
-  iFrameUntilMs?: number;
-  spawn?: { x: number; y: number }; // ← ajout
-  cantTagUntilMs?: number;
+  spawn?: { x: number; y: number };
 };

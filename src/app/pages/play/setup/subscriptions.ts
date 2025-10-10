@@ -1,27 +1,29 @@
-import { inject, runInInjectionContext } from '@angular/core';
+import { runInInjectionContext } from '@angular/core';
 import { doc, setDoc, updateDoc } from '@angular/fire/firestore';
 import type { PlayCtx } from '../play.types';
 import type { LocalState } from './local-state';
 import { isOwnerNow } from './local-state';
 import { pickRespawn } from '../respawn.util';
-import { GAME_CONSTANTS, TagEvent } from '../play.models';
+import { GAME_CONSTANTS } from '../play.models';
 import type { Player } from '../../room/player.model';
-import { ToastService } from '../../../services/toast.service';
 import { clamp } from '../play.helpers';
-import { ref, onValue, off } from '@angular/fire/database'; // ✅ plus de Database ici
+import { ref, onValue, off } from '@angular/fire/database';
+
+// ✅ types & type guard depuis @tag/types (Option A)
+import type { EventItem, TagHitEvent } from '@tag/types';
+import { isTagHitEvent } from '@tag/types';
 
 export function attachSubscriptions(ctx: PlayCtx, ls: LocalState) {
 
   /* ===================== BOTS (RTDB via ctx.rtdb) ===================== */
   let lastBots: Record<string, { x: number; y: number; t?: number; role?: string }> = {};
 
-  // écoute bots/{matchId} depuis l'autre appli (ou ton BotService)
+  // Écoute bots/{matchId} depuis l’autre appli (ou ton BotService)
   const botsRef = ref(ctx.rtdb, `bots/${ctx.matchId}`);
   const botsHandler = (snap: any) => {
     const raw = (snap.val() ?? {}) as Record<string, any>;
     const clean: typeof lastBots = {};
-    //console.log("raw bots", raw);
-    
+
     for (const id of Object.keys(raw)) {
       if (!id.startsWith('bot-')) continue; // convention UID bot
       const b = raw[id] || {};
@@ -37,14 +39,19 @@ export function attachSubscriptions(ctx: PlayCtx, ls: LocalState) {
   (ls as any).stopBots = () => off(botsRef, 'value', botsHandler);
 
   /* ===================== MODE ===================== */
-  ctx.roomSvc.getMode$(ctx.matchId).subscribe((data: any) => { ls.mode = data || ''; });
+  ctx.roomSvc.getMode$(ctx.matchId).subscribe((data: any) => {
+    ls.mode = data || '';
+  });
 
   /* ===================== PLAYERS (scores + hunter) ===================== */
   ls.playersSub = ctx.roomSvc.players$(ctx.matchId).subscribe((players: Player[]) => {
     ls.playersById = Object.fromEntries((players || []).map(p => [p.uid, p]));
     let hunter: any = null;
-    if (ctx.hunterUid) hunter = players.find((p: any) => p?.uid === ctx.hunterUid || p?.id === ctx.hunterUid) ?? null;
+    if (ctx.hunterUid) {
+      hunter = players.find((p: any) => p?.uid === ctx.hunterUid || p?.id === ctx.hunterUid) ?? null;
+    }
     if (!hunter) hunter = players.find((p: any) => p?.role === 'chasseur') ?? null;
+
     ctx.myScore = hunter?.score ?? 0;
     ctx.cd.markForCheck();
   });
@@ -124,24 +131,31 @@ export function attachSubscriptions(ctx: PlayCtx, ls: LocalState) {
   });
 
   /* ===================== EVENTS (annonces + respawn si je suis victime) ===================== */
-  ls.eventsSub = ctx.match.events$(ctx.matchId).subscribe((events: TagEvent[]) => {
+  ls.eventsSub = ctx.match.events$(ctx.matchId).subscribe((events: EventItem[]) => {
     for (const ev of events) {
-      const id = ev.id ?? `${ev.hunterUid}:${ev.victimUid}:${ev.ts?.seconds ?? ''}`;
-      if (ls.handledEventIds.has(id)) continue;
-      ls.handledEventIds.add(id);
+      // ——— Discrimination par type
+      if (isTagHitEvent(ev)) {
+        const hit = ev as TagHitEvent;
 
-      if (ev.type === 'tag') {
+        // id stable pour éviter les doublons de traitement
+        const id = hit.id ?? `tag/hit:${hit.hunterUid}:${hit.preyUid}:${hit.ts}`;
+        if (ls.handledEventIds.has(id)) continue;
+        ls.handledEventIds.add(id);
+
+        // bandeau récent
         ctx.recentTag = {
-          label: `${ev.hunterUid.slice(0, 6)} a tagué ${ev.victimUid.slice(0, 6)}`,
+          label: `${hit.hunterUid.slice(0, 6)} a tagué ${hit.preyUid.slice(0, 6)}`,
           until: Date.now() + 2500,
         };
 
-        if (ev.victimUid === ctx.uid && ls.mode === 'classic') {
-          const { x, y } = pickRespawn(ev.x, ev.y);
+        // respawn si JE suis la victime en mode classic
+        if (hit.preyUid === ctx.uid && ls.mode === 'classic') {
+          const { x, y } = pickRespawn(hit.x, hit.y);
           ctx.me.x = x; ctx.me.y = y;
 
           ctx.invulnerableUntil = performance.now() + GAME_CONSTANTS.INVULN_MS;
           const untilMs = Date.now() + GAME_CONSTANTS.INVULN_MS;
+
           runInInjectionContext(ctx.env, async () => {
             try {
               const ref = doc(ctx.match.fs, `rooms/${ctx.matchId}/players/${ctx.uid}`);
@@ -151,6 +165,10 @@ export function attachSubscriptions(ctx: PlayCtx, ls: LocalState) {
 
           ctx.positions.writeSelf(ctx.matchId, ctx.uid, x, y, ctx.role as string);
         }
+      } else {
+        // autres types d’événements : no-op (ou ajoute tes handlers ici)
+        // const id = ev.id ?? `${ev.type}:${ev.ts}`;
+        // if (!ls.handledEventIds.has(id)) { ... }
       }
     }
     ctx.cd.markForCheck();
@@ -208,7 +226,7 @@ export function detachSubscriptions(ctx: PlayCtx, ls: LocalState) {
   ls.eventsSub?.unsubscribe?.();
   ls.playersSub?.unsubscribe?.();
   ls.positionsSub?.unsubscribe?.();
-  (ls as any).stopBots?.();           // ✅ coupe le listener RTDB des bots
+  (ls as any).stopBots?.(); // ✅ coupe le listener RTDB des bots
   ctx.sub.unsubscribe();
   ctx.positions.stop();
   if (ls.timerId) clearInterval(ls.timerId);
@@ -217,7 +235,7 @@ export function detachSubscriptions(ctx: PlayCtx, ls: LocalState) {
 
 /* === Helpers === */
 function moveCooldownMs(ctx: PlayCtx) {
-  return ctx.role === 'chasseur'
+  return ctx.role === 'hunter'
     ? GAME_CONSTANTS.MOVE_COOLDOWN_MS_CHASSEUR
     : GAME_CONSTANTS.MOVE_COOLDOWN_MS_CHASSE;
 }

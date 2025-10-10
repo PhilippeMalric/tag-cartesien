@@ -1,9 +1,9 @@
 import { Injectable, inject } from '@angular/core';
 import { Database, ref, set, onValue, off, onDisconnect } from '@angular/fire/database';
 import { BehaviorSubject, combineLatest, Subscription } from 'rxjs';
+import type { Position, Role } from '@tag/types';
 
-export type PosDTO = { x: number; y: number; t?: number; name?: string; role?: string;  };
-
+type PosWithMeta = Position & { name?: string; role?: Role }; // RTDB: on garde name/role si présent
 export type Vec = { x: number; y: number };
 
 @Injectable({ providedIn: 'root' })
@@ -13,9 +13,10 @@ export class PositionsService {
 
   private mergeSub?: Subscription;
   roomId!: string; // assigne-la depuis PlayComponent
-  private _players$ = new BehaviorSubject<Record<string, PosDTO>>({});
-  private _bots$    = new BehaviorSubject<Record<string, PosDTO>>({});
-  private _positions$ = new BehaviorSubject<Record<string, PosDTO>>({});
+
+  private _players$   = new BehaviorSubject<Record<string, PosWithMeta>>({});
+  private _bots$      = new BehaviorSubject<Record<string, PosWithMeta>>({});
+  private _positions$ = new BehaviorSubject<Record<string, PosWithMeta>>({});
   readonly positions$ = this._positions$.asObservable();
 
   private listenRefPlayers: any = null;
@@ -26,14 +27,15 @@ export class PositionsService {
   attachPresence(matchId: string, uid: string) {
     if (!matchId || !uid) return;
     const r = ref(this.db, `presence/${matchId}/${uid}`);
-    set(r, true).catch(()=>{});
+    set(r, true).catch(() => {});
     try { onDisconnect(r).remove(); } catch {}
   }
 
-  async writeSelf(matchId: string, uid: string, x: number, y: number, role: string) {
+  async writeSelf(matchId: string, uid: string, x: number, y: number, role: Role | string) {
     if (!matchId || !uid) return;
     const r = ref(this.db, `positions/${matchId}/${uid}`);
-    await set(r, { x, y, t: Date.now(),role });
+    // Normalise: Position.updatedAt (epoch ms) + role typé
+    await set(r, { x, y, updatedAt: Date.now(), role } as PosWithMeta);
   }
 
   startListening(matchId: string) {
@@ -43,7 +45,7 @@ export class PositionsService {
     // Joueurs
     this.listenRefPlayers = ref(this.db, `positions/${matchId}`);
     this.cbPlayers = (snap: any) => {
-      const val = (snap.val() || {}) as Record<string, PosDTO>;
+      const val = (snap.val() || {}) as Record<string, PosWithMeta>;
       this._players$.next(val);
     };
     onValue(this.listenRefPlayers, this.cbPlayers);
@@ -51,41 +53,42 @@ export class PositionsService {
     // Bots
     this.listenRefBots = ref(this.db, `bots/${matchId}`);
     this.cbBots = (snap: any) => {
-      const val = (snap.val() || {}) as Record<string, PosDTO>;
+      const val = (snap.val() || {}) as Record<string, PosWithMeta>;
       this._bots$.next(val);
     };
     onValue(this.listenRefBots, this.cbBots);
 
     // Fusion
     this.mergeSub = combineLatest([this._players$, this._bots$]).subscribe(([p, b]) => {
-       const merged: Record<string, PosDTO> = { ...p };
-       for (const [id, pos] of Object.entries(b || {})) {
-         merged[`${id}`] = pos;
-       }
-       this._positions$.next(merged);
-     });
+      const merged: Record<string, PosWithMeta> = { ...p };
+      for (const [id, pos] of Object.entries(b || {})) {
+        merged[id] = pos;
+      }
+      this._positions$.next(merged);
+    });
   }
 
   stop() {
     this.mergeSub?.unsubscribe();
     this.mergeSub = undefined;
+
     if (this.listenRefPlayers && this.cbPlayers) off(this.listenRefPlayers, this.cbPlayers);
     if (this.listenRefBots && this.cbBots) off(this.listenRefBots, this.cbBots);
-      this.listenRefPlayers = this.cbPlayers = this.listenRefBots = this.cbBots = null;
-      this._players$.next({});
-      this._bots$.next({});
-      this._positions$.next({});
-    }
 
-  async sendIntent(matchId: string, uid: string, vx: number, vy: number, role?: string) {
-      if (!matchId || !uid) return;
-      const seq = (this.seqByUser.get(uid) ?? 0) + 1;
-      this.seqByUser.set(uid, seq);
+    this.listenRefPlayers = this.cbPlayers = this.listenRefBots = this.cbBots = null;
+    this._players$.next({});
+    this._bots$.next({});
+    this._positions$.next({});
+  }
 
-      const intentRef = ref(this.db, `rooms/${matchId}/intents/${uid}/${seq}`);
-      const payload: any = { vx, vy, t: Date.now() };
-      if (role) payload.role = role;
-      await set(intentRef, payload);
-    }
+  async sendIntent(matchId: string, uid: string, vx: number, vy: number, role?: Role | string) {
+    if (!matchId || !uid) return;
+    const seq = (this.seqByUser.get(uid) ?? 0) + 1;
+    this.seqByUser.set(uid, seq);
 
+    const intentRef = ref(this.db, `rooms/${matchId}/intents/${uid}/${seq}`);
+    const payload: any = { vx, vy, t: Date.now() }; // côté intents, tu utilises déjà 't'; OK de le garder
+    if (role) payload.role = role;
+    await set(intentRef, payload);
+  }
 }

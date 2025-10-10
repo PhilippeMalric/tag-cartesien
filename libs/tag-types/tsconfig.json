@@ -5,7 +5,11 @@
     "outDir": "./dist",
     "composite": true,
     "declaration": true,
-    "declarationMap": true
+    "declarationMap": true,
+    "experimentalDecorators": true
+  },
+  "angularCompilerOptions": {
+    "enableStandardTypeScriptDecorators": false
   },
   "include": ["src"]
 }

@@ -53,7 +53,7 @@ export function startGameLoop(ctx: PlayCtx, ls: LocalState) {
     //console.log("ctx.role", ctx.role);
     
     // Tag (chasseur)
-    if ((ctx.role === 'chasseur' || ctx.role === 'hunter') && performance.now() - ctx.lastTagMs >= GAME_CONSTANTS.TAG_COOLDOWN_MS) {
+    if ((ctx.role === 'hunter' ) && performance.now() - ctx.lastTagMs >= GAME_CONSTANTS.TAG_COOLDOWN_MS) {
       const victim = findVictimWithinRadius(ctx);
       if (victim) {
         console.log("victim", victim);
@@ -97,12 +97,12 @@ export function stopGameLoop(ls: LocalState) {
 
 /* === Helpers locaux === */
 function moveCooldownMs(ctx: PlayCtx) {
-  return ctx.role === 'chasseur'
+  return ctx.role === 'hunter'
     ? GAME_CONSTANTS.MOVE_COOLDOWN_MS_CHASSEUR
     : GAME_CONSTANTS.MOVE_COOLDOWN_MS_CHASSE;
 }
 function stepUnits(ctx: PlayCtx) {
-  return ctx.role === 'chasseur'
+  return ctx.role === 'hunter'
     ? GAME_CONSTANTS.STEP_UNITS_CHASSEUR
     : GAME_CONSTANTS.STEP_UNITS_CHASSE;
 }

@@ -1,4 +1,4 @@
-import type { Role } from './room.service';
+import type { Role } from '@tag/types';
 
 /** Map typé des rôles par uid */
 export type RoleMap = Record<string, Role | undefined>;

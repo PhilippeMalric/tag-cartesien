@@ -14,7 +14,7 @@
       }
     },
 
-    "positions": {
+   "positions": {
       "$matchId": {
         "$uid": {
           ".read": "auth != null",
@@ -23,6 +23,7 @@
           "y": { ".validate": "newData.isNumber()" },
           "t": { ".validate": "newData.isNumber()" },
           "role": { ".validate": "newData.isString()" },
+          "updatedAt": { ".validate": "newData.isNumber()" },   
           "$other": { ".validate": false }
         }
       }

@@ -1,5 +1,4 @@
-﻿
-import { Injectable, EnvironmentInjector, runInInjectionContext } from '@angular/core';
+﻿import { Injectable, EnvironmentInjector, runInInjectionContext } from '@angular/core';
 import {
   Firestore,
   doc, getDoc, setDoc, updateDoc, writeBatch,
@@ -9,15 +8,12 @@ import {
   where,
   getDocFromCache
 } from '@angular/fire/firestore';
-import { Observable, defer, map, tap } from 'rxjs';
-import { Player } from '../room/player.model'; // Assure-toi que Player { uid: string; ... }
-import { Mode, RoomDoc } from '../../models/room.model';
+import { Observable, defer, map, tap, shareReplay } from 'rxjs';
 
+import type { RoomDoc, Role, GameMode } from '@tag/types';
+import type { Player } from '../room/player.model';
 
-export type RoomState = 'idle' | 'in-progress' | 'running' | 'ended';
-export type Role = 'chasseur' | 'chassé' | 'hunter'| 'prey';
-
-
+export type RoomState = RoomDoc['state']; // 'idle' | 'running' | 'ended'
 
 @Injectable({ providedIn: 'root' })
 export class RoomService {
@@ -31,11 +27,11 @@ export class RoomService {
   room$(roomId: string): Observable<RoomDoc | null> {
     return defer(() =>
       runInInjectionContext(this.env, () => {
-        console.log(roomId);
-        
-        return docData(doc(this.fs, `rooms/${roomId}`)).pipe(tap((data:any)=>{console.log('room$',roomId,data);
-
-        })) as Observable<RoomDoc>;
+        const r = doc(this.fs, `rooms/${roomId}`);
+        return docData(r).pipe(
+          map(d => (d ?? null) as RoomDoc | null),
+          shareReplay({ bufferSize: 1, refCount: true }),
+        );
       })
     );
   }
@@ -58,38 +54,32 @@ export class RoomService {
   }
 
   ensureSelfPlayerDoc(roomId: string, uid: string, displayName?: string): Promise<void> {
-      const key = `${roomId}/${uid}`;
-      const name = (displayName ?? '').trim();
-      if (!name) return Promise.resolve(); // rien à écrire
+    const key = `${roomId}/${uid}`;
+    const name = (displayName ?? '').trim();
+    if (!name) return Promise.resolve();
 
-      // si déjà en cours, on réutilise la même promesse
-      const inflight = this.ensureInFlight.get(key);
-      if (inflight) return inflight;
+    const inflight = this.ensureInFlight.get(key);
+    if (inflight) return inflight;
 
-      const p = runInInjectionContext(this.env, async () => {
-        const ref = this.playerRef(roomId, uid);
+    const p = runInInjectionContext(this.env, async () => {
+      const ref = this.playerRef(roomId, uid);
 
-        // 1) Lecture **cache** (synchro/rapide). Si identique → on **skip** l’écriture.
-        try {
-          const snap = await getDocFromCache(ref);
-          if (snap.exists()) {
-            const curr = (snap.data()?.['displayName'] ?? '').trim();
-            if (curr === name) return; // déjà à jour → no-op
-          }
-        } catch {
-          // pas dans le cache : on ne fait rien, on passera à l'écriture optimiste
+      try {
+        const snap = await getDocFromCache(ref);
+        if (snap.exists()) {
+          const curr = (snap.data()?.['displayName'] ?? '').trim();
+          if (curr === name) return;
         }
+      } catch {}
 
-        // 2) Écriture uniquement si nécessaire (merge)
-        await setDoc(ref, { displayName: name }, { merge: true });
-      })
-      .finally(() => {
-        this.ensureInFlight.delete(key);
-      });
+      await setDoc(ref, { displayName: name }, { merge: true });
+    }).finally(() => {
+      this.ensureInFlight.delete(key);
+    });
 
-      this.ensureInFlight.set(key, p);
-      return p;
-    }
+    this.ensureInFlight.set(key, p);
+    return p;
+  }
 
   /** Met à jour uniquement le champ `ready` de ce joueur */
   async toggleReady(roomId: string, uid: string, ready: boolean) {
@@ -101,9 +91,9 @@ export class RoomService {
   /** Helper interne: détecte s'il existe déjà un chasseur */
   private hasHunter(room: Partial<RoomDoc> | null | undefined, players: Player[]): boolean {
     if (!players?.length) return false;
-    if (players.some(p => p.role === 'chasseur')) return true;
+    if (players.some(p => p.role === 'hunter')) return true;
     const roles = room?.roles ?? {};
-    return Object.values(roles).some(r => r === 'chasseur');
+    return Object.values(roles).some(r => r === 'hunter');
   }
 
   /** Helper interne: owner > ready > premier (sync) */
@@ -123,7 +113,7 @@ export class RoomService {
 
       const playersSnap = await getDocs(collection(this.fs, `rooms/${roomId}/players`));
       const players = playersSnap.docs
-        .map(d => ({  ...(d.data() as Player) }))
+        .map(d => ({ ...(d.data() as Player) }))
         .filter(p => !!p.uid);
 
       if (!players.length) return;
@@ -131,7 +121,7 @@ export class RoomService {
 
       const hunterUid = this.pickHunterUidSync(room, players);
       const roles: Record<string, Role> = {};
-      for (const p of players) roles[p.uid] = (p.uid === hunterUid ? 'chasseur' : 'chassé');
+      for (const p of players) roles[p.uid] = (p.uid === hunterUid ? 'hunter' : 'prey');
 
       const batch = writeBatch(this.fs);
       batch.update(this.roomRef(roomId), { roles, rolesUpdatedAt: serverTimestamp() });
@@ -192,27 +182,24 @@ export class RoomService {
       await batch.commit();
     });
   }
-  async setMode(roomId: string, mode: 'classic'|'infection'|'transmission') {
+
+  async setMode(roomId: string, mode: GameMode) {
     const ref = doc(this.fs, `rooms/${roomId}`);
     await updateDoc(ref, { mode, updatedAt: serverTimestamp() });
   }
 
-  getMode$(roomId: string): Observable<Mode | undefined> {
+  getMode$(roomId: string): Observable<GameMode | undefined> {
     return defer(() =>
       runInInjectionContext(this.env, () => {
         const ref = doc(this.fs, `rooms/${roomId}`);
         return (docData(ref) as Observable<RoomDoc>).pipe(
-          // si jamais tu veux un défaut:
-          // map(room => room?.mode ?? 'classic')
+          map(room => room?.mode as GameMode | undefined)
         );
       })
-    ).pipe(
-      // On ne garde que le champ 'mode'
-      map(room => room?.mode)
     );
   }
 
-  async setState(roomId: string, state: 'idle'|'running'|'in-progress'|'ended') {
+  async setState(roomId: string, state: RoomState | 'in-progress') {
     const ref = doc(this.fs, `rooms/${roomId}`);
     await updateDoc(ref, { state, updatedAt: serverTimestamp() });
   }
@@ -220,7 +207,6 @@ export class RoomService {
   /** Seul le owner devrait appeler cette méthode (les rules le garantissent) */
   async setHunter(roomId: string, targetUid: string): Promise<void> {
     const roomRef = doc(this.fs, 'rooms', roomId);
-    // Met à jour hunter + rôles (facultatif)
     await updateDoc(roomRef, {
       hunterUid: targetUid,
       [`roles.${targetUid}`]: 'hunter',
@@ -235,16 +221,16 @@ export class RoomService {
   }
 
   /** Met le rôle d'un joueur (merge dans roles.<uid>) */
-  async setRole(roomId: string, uid: string, role: 'chasseur' | 'chassé'): Promise<void> {
+  async setRole(roomId: string, uid: string, role: Role): Promise<void> {
     const roomRef = doc(this.fs, 'rooms', roomId);
     await updateDoc(roomRef, {
       [`roles.${uid}`]: role,
       updatedAt: serverTimestamp(),
-    } as any);
+    });
   }
 
   /** Écrit plusieurs rôles d'un coup (merge partiel) */
-  async setRoles(roomId: string, roles: Record<string, 'chasseur' | 'chassé'>): Promise<void> {
+  async setRoles(roomId: string, roles: Record<string, Role>): Promise<void> {
     const roomRef = doc(this.fs, 'rooms', roomId);
     const payload: any = { updatedAt: serverTimestamp() };
     for (const [uid, role] of Object.entries(roles)) {
@@ -252,7 +238,4 @@ export class RoomService {
     }
     await updateDoc(roomRef, payload);
   }
-
-
-
 }

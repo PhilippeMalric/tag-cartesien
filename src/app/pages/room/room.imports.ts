@@ -64,13 +64,6 @@ export const MAT = [
 // --- Firebase Auth (valeurs) ---
 export { Auth as FirebaseAuth, signInAnonymously, authState } from '@angular/fire/auth';
 
-// --- Modèles & services app ---
-// ⚠️ Interfaces / type alias => 'export type'
-export type { Player } from './player.model';
-export { RoomService } from './room.service';
-export type { Role } from './room.service';
-export type { RoomDoc } from '../../models/room.model';
-
 // --- UI (valeurs) ---
 export { MapPickerComponent } from './ui/map-picker.component';
 
@@ -79,3 +72,28 @@ export { SpawnCoordService } from '../../services/spawn-coord.service';
 export { OwnerActionsService } from './owner-actions.service';
 export { RoomLogger } from './room-logger';
 export { inZone } from './in-zone.operator';
+
+// --- Modèles & types partagés (@tag/types) ---
+// ⚠️ Interfaces / type alias => 'export type'
+export type {
+  RoomDoc,
+  Role,
+  GameMode,
+  PlayerDoc,
+  Position,
+  PositionMap,
+          // union d’événements
+  BaseEvent,        // BaseEvent<T extends string>
+  TagHitEvent,      // ex. BaseEvent<'tag/hit'>
+  EventType,        // union des clés possibles
+} from '@tag/types';
+
+// --- Services métier (valeurs) ---
+export { RoomService } from './room.service';
+
+// ❌ ne plus ré-exporter Role depuis room.service ni RoomDoc depuis models/room.model
+// export type { Role } from './room.service';
+// export type { RoomDoc } from '././models/room.model';
+
+// Type UI local (spécifique à l’app)
+export type { Player } from './player.model';

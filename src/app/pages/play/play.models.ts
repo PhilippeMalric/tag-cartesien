@@ -1,4 +1,4 @@
-import { Role } from "../room";
+
 
 // Position de base (x, y)
 export type Pos = { x: number; y: number };
@@ -11,27 +11,7 @@ export type OtherPos = Pos & {
   ringKind?: 'victim' | 'hunter';
 };
 
-export type TagEvent = {
-  id?: string;
-  type: 'tag';
-  hunterUid: string;
-  victimUid: string;
-  x?: number;
-  y?: number;
-  ts?: any;
-};
 
-export type MyPlayerDoc = {
-  role?: Role
-  score?: number;
-  iFrameUntilMs?: number;
-  spawn?: { x: number; y: number };
-
-  // Cooldown / retag control
-  cantTagUntilMs?: number;
-  noRetagUid?: string;
-  noRetagUntilMs?: number;
-};
 
 export const GAME_CONSTANTS = {
   TAG_RADIUS: 5,                 // rayon de tag
@@ -65,3 +45,24 @@ export const PLAY_COLORS = {
   hunter: '#ff7a00',  // chasseur
   victim: '#34a853',  // chassé
 };
+
+// Remplace tout le fichier par ceci (si tu avais TagEvent/MyPlayerDoc locaux)
+import type { PlayerDoc, EventItem, Role } from '@tag/types';
+
+// Ton modèle UI joueur (si tu en as besoin côté Play)
+// On enrichit PlayerDoc au lieu de dupliquer
+export type MyPlayerDoc = PlayerDoc & {
+  uid?: string;         // injecté par idField
+  score?: number;
+  ready?: boolean;
+  combo?: number;
+  spawn?: { x: number; y: number };
+  // flags anti-retag
+  noRetagUid?: string;
+  noRetagUntilMs?: number;
+  cantTagUntilMs?: number;
+};
+
+// Plus de TagEvent custom → on utilise EventItem
+export type TagEvent = EventItem; // si des imports existants l’attendent encore
+export type PlayerRole = Role;    // alias pratique pour l’UI si tu l’utilisais

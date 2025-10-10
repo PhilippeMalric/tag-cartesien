@@ -17,46 +17,36 @@
         "build": {
           "builder": "@angular/build:application",
           "options": {
+            "aot": true,
             "browser": "src/main.ts",
             "tsConfig": "tsconfig.app.json",
             "inlineStyleLanguage": "scss",
             "assets": [
               "src/favicon.ico",
               "src/assets",
-              {
-                "glob": "**/*",
-                "input": "public"
-                
-              }
+              { "glob": "**/*", "input": "public" }
             ],
-            "styles": [
-              "src/styles.scss"
-            ],
+            "styles": ["src/styles.scss"],
             "server": "src/main.server.ts",
             "outputMode": "server",
-            "ssr": {
-              "entry": "src/server.ts"
-            }
+            "ssr": { "entry": "src/server.ts" }
           },
           "configurations": {
+            "aotdev": {
+              "aot": true,
+               "outputMode": "static",
+              "ssr": false
+            },
             "production": {
-               "fileReplacements": [
+              "fileReplacements": [
                 {
                   "replace": "src/environments/environment.ts",
                   "with": "src/environments/environment.prod.ts"
                 }
               ],
               "budgets": [
-                {
-                  "type": "initial",
-                  "maximumWarning": "500kB",
-                  "maximumError": "10MB"
-                },
-                {
-                  "type": "anyComponentStyle",
-                  "maximumWarning": "4kB",
-                  "maximumError": "800kB"
-                }
+                { "type": "initial", "maximumWarning": "500kB", "maximumError": "10MB" },
+                { "type": "anyComponentStyle", "maximumWarning": "4kB", "maximumError": "800kB" }
               ],
               "outputHashing": "all"
             },
@@ -71,34 +61,25 @@
         "serve": {
           "builder": "@angular/build:dev-server",
           "configurations": {
-            "production": {
-              "buildTarget": "tag-cartesien:build:production"
-            },
-            "development": {
-              "buildTarget": "tag-cartesien:build:development"
-            }
+            "aotdev": { "buildTarget": "tag-cartesien:build:aotdev" },
+            "production": { "buildTarget": "tag-cartesien:build:production" },
+            "development": { "buildTarget": "tag-cartesien:build:development" }
           },
           "defaultConfiguration": "development"
         },
-        "extract-i18n": {
-          "builder": "@angular/build:extract-i18n"
-        },
+        "extract-i18n": { "builder": "@angular/build:extract-i18n" },
         "test": {
           "builder": "@angular/build:karma",
           "options": {
+            "aot": true,
             "tsConfig": "tsconfig.spec.json",
             "inlineStyleLanguage": "scss",
             "assets": [
               "src/favicon.ico",
               "src/assets",
-              {
-                "glob": "**/*",
-                "input": "public"
-              }
+              { "glob": "**/*", "input": "public" }
             ],
-            "styles": [
-              "src/styles.scss"
-            ]
+            "styles": ["src/styles.scss"]
           }
         }
       }

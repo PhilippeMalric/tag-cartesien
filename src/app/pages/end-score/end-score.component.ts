@@ -13,10 +13,12 @@ import {
   Firestore, collection, collectionData, orderBy, limit, query
 } from '@angular/fire/firestore';
 
+import type { EventItem, GameMode } from '@tag/types';
+
 /* === Types minimaux et sûrs pour le template === */
 
 type RoomInfo = {
-  mode?: string;
+  mode?: GameMode;
   targetScore?: number;
 };
 
@@ -26,14 +28,10 @@ type TopPlayer = {
   score?: number;
 };
 
+// pour convertir les timestamps Firestore/compat
 type FirestoreTs = { toMillis?: () => number; seconds?: number };
-type TagEvent = {
-  id: string;
-  type?: string;
-  hunterUid?: string;
-  ts?: FirestoreTs | Date | number | null;
-};
 
+// VM interne des events (lecture brute -> EventItem)
 type Metrics = {
   tagsByPlayer: Map<string, number>;
   bestStreakByPlayer: Map<string, number>;
@@ -85,7 +83,9 @@ export class EndScoreComponent {
 
   /** Room (mode, target, etc.) — typée pour éviter unknown dans le template */
   room$: Observable<RoomInfo | undefined> = this.match.room$(this.matchId).pipe(
-    map((r: any): RoomInfo | undefined => (r ? { mode: r.mode, targetScore: r.targetScore } : undefined)),
+    map((r: any): RoomInfo | undefined =>
+      r ? { mode: r.mode as GameMode, targetScore: r.targetScore } : undefined
+    ),
     shareReplay({ bufferSize: 1, refCount: true })
   );
 
@@ -101,25 +101,25 @@ export class EndScoreComponent {
     shareReplay({ bufferSize: 1, refCount: true })
   );
 
-  /** Events (jusqu’à 500 récents) — typés */
-  private events$: Observable<TagEvent[]> = (() => {
+  /** Events (jusqu’à 500 récents) — @tag/types EventItem */
+  private events$: Observable<EventItem[]> = (() => {
     const col = collection(this.fs, `rooms/${this.matchId}/events`);
-    const q = query(col, orderBy('ts', 'desc'), limit(500));
+    const q = query(col, orderBy('createdAt', 'desc'), limit(500));
     return collectionData(q, { idField: 'id' }).pipe(
-      map((rows: any[]): TagEvent[] => rows as TagEvent[])
+      map((rows: any[]): EventItem[] => rows as unknown as EventItem[])
     );
   })();
 
   /**
    * Calcule:
-   * - tagsByPlayer: total de tags par joueur
+   * - tagsByPlayer: total de tags par joueur (payload.byUid)
    * - bestStreakByPlayer: meilleure série de tags consécutifs
    */
   private metrics$: Observable<Metrics> = this.events$.pipe(
-    map((list: TagEvent[]) => {
+    map((list: EventItem[]) => {
       const eventsAsc = [...(list ?? [])].sort((a, b) => {
-        const ams = toMillis(a?.ts) ?? 0;
-        const bms = toMillis(b?.ts) ?? 0;
+        const ams = toMillis((a as any)?.createdAt) ?? 0;
+        const bms = toMillis((b as any)?.createdAt) ?? 0;
         return ams - bms;
       });
 
@@ -129,8 +129,9 @@ export class EndScoreComponent {
       let currentStreak = 0;
 
       for (const ev of eventsAsc) {
-        if (ev?.type !== 'tag' || !ev?.hunterUid) continue;
-        const h = ev.hunterUid;
+        if (ev?.type !== 'tag/hit') continue;
+        const h: string | undefined = (ev as any)?.payload?.byUid;
+        if (!h) continue;
 
         tagsByPlayer.set(h, (tagsByPlayer.get(h) ?? 0) + 1);
 
