@@ -103,7 +103,7 @@
               </span>
 
               <!-- Badge de rôle, compact et explicite -->
-              @if (p.roleResolved === 'chasseur') {
+              @if (p.roleResolved === 'hunter') {
                 <span class="role-chip role-chip--hunter" matTooltip="Rôle du joueur">
                   <mat-icon fontSet="material-symbols-outlined" class="chip-ic">target</mat-icon>
                   Chasseur
@@ -127,10 +127,10 @@
               @if (isOwner$ | async) {
                 <button
                   mat-icon-button
-                  (click)="onToggleHunter(p.uid, p.roleResolved === 'chasseur')"
-                  [matTooltip]="(p.roleResolved === 'chasseur') ? 'Rendre le rôle de chasseur au propriétaire' : 'Définir comme chasseur'">
+                  (click)="onToggleHunter(p.uid, p.roleResolved === 'hunter')"
+                  [matTooltip]="(p.roleResolved === 'hunter') ? 'Rendre le rôle de chasseur au propriétaire' : 'Définir comme chasseur'">
                   <mat-icon fontSet="material-symbols-outlined">
-                    {{ (p.roleResolved === 'chasseur') ? 'swap_horiz' : 'gps_fixed' }}
+                    {{ (p.roleResolved === 'hunter') ? 'swap_horiz' : 'gps_fixed' }}
                   </mat-icon>
                 </button>
               }

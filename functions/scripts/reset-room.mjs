@@ -66,9 +66,9 @@ async function deleteCollection(collRef, batchSize = 200) {
 
   // 3) Remettre les rôles de base (1 chasseur)
   const roles = { ...(room.roles || {}) };
-  for (const k of Object.keys(roles)) roles[k] = "chassé";
-  roles[hunterUid] = "chasseur";
-  roles[victimUid] = "chassé";
+  for (const k of Object.keys(roles)) roles[k] = "prey";
+  roles[hunterUid] = "hunter";
+  roles[victimUid] = "prey";
 
   // 4) Reposer l’état de la room (state running, mode/target optionnels)
   const next = {

@@ -63,7 +63,7 @@ async function setMode(roomId, mode) { await db.doc(`rooms/${roomId}`).set({ mod
 async function setStateRunning(roomId) { await db.doc(`rooms/${roomId}`).set({ state: "running", startedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true }); }
 async function setStateStopped(roomId) { await db.doc(`rooms/${roomId}`).set({ state: "stopped", stoppedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true }); }
 async function setRoles(roomId, hunterUid, players) {
-  const rolesMap = {}; for (const p of players) rolesMap[p.id] = (p.id === hunterUid ? "chasseur" : "chassé");
+  const rolesMap = {}; for (const p of players) rolesMap[p.id] = (p.id === hunterUid ? "hunter" : "prey");
   const batch = db.batch();
   batch.set(db.doc(`rooms/${roomId}`), { roles: rolesMap, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   for (const p of players) batch.set(db.doc(`rooms/${roomId}/players/${p.id}`), { role: rolesMap[p.id] }, { merge: true });
@@ -79,7 +79,7 @@ async function maybeResetScores(roomId, players, doReset) {
   await batch.commit();
 }
 async function emitStartEvent(roomId, mode, meta = {}) { await db.collection(`rooms/${roomId}/events`).add({ type: "start", mode, meta, ts: FieldValue.serverTimestamp() }); }
-function currentHunter(roles = {}) { return Object.entries(roles).find(([, r]) => r === "chasseur")?.[0] || null; }
+function currentHunter(roles = {}) { return Object.entries(roles).find(([, r]) => r === "hunter")?.[0] || null; }
 function printState(room, players) {
   console.log("\n— ÉTAT —"); console.log("mode :", room.mode); console.log("state:", room.state);
   console.log("roles:", room.roles || {}); console.log("players:");
@@ -88,12 +88,12 @@ function printState(room, players) {
 }
 // TAG
 async function pushTag(roomId, hunterUid, victimUid, x = 0, y = 0) {
-  await db.collection(`rooms/${roomId}/events`).add({ type: "tag", hunterUid, victimUid, x, y, ts: FieldValue.serverTimestamp() });
+  await db.collection(`rooms/${roomId}/events`).add({ type: "tag/hit", hunterUid, victimUid, x, y, ts: FieldValue.serverTimestamp() });
 }
 async function expectSwapAfterTag(roomId, prevHunter, prevVictim, waitMs = 700) {
   await new Promise(r => setTimeout(r, waitMs));
   const room = await readRoom(roomId); const roles = room.roles || {};
-  const ok = roles[prevVictim] === "chasseur" && roles[prevHunter] === "chassé";
+  const ok = roles[prevVictim] === "hunter" && roles[prevHunter] === "prey";
   return { ok, room };
 }
 

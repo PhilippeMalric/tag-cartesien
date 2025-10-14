@@ -48,8 +48,8 @@ async function listRooms(limit = 50) {
   const out = []; snap.forEach(d => out.push({ id: d.id, ...d.data() })); return out;
 }
 function currentHunter(roles = {}, players = []) {
-  const fromRoom = Object.entries(roles).find(([, r]) => r === "chasseur")?.[0];
-  if (fromRoom) return fromRoom; return players.find(p => p.role === "chasseur")?.id ?? null;
+  const fromRoom = Object.entries(roles).find(([, r]) => r === "hunter")?.[0];
+  if (fromRoom) return fromRoom; return players.find(p => p.role === "hunter")?.id ?? null;
 }
 function safeTsToMs(ts) {
   if (!ts) return null;
@@ -95,7 +95,7 @@ function render() {
   if (lastEvents.length === 0) out += "  (aucun)\n";
   else for (const ev of lastEvents) {
     const ts = safeTsToMs(ev.ts); const tstr = ts ? new Date(ts).toLocaleTimeString() : "—";
-    if (ev.type === "tag") out += `  [${tstr}] tag: ${ev.hunterUid} → ${ev.victimUid}  @(${ev.x ?? 0},${ev.y ?? 0})\n`;
+    if (ev.type === "tag/hit") out += `  [${tstr}] tag: ${ev.hunterUid} → ${ev.victimUid}  @(${ev.x ?? 0},${ev.y ?? 0})\n`;
     else if (ev.type === "start") out += `  [${tstr}] start (mode=${ev.mode})\n`;
     else if (ev.type === "end") out += `  [${tstr}] end (reason=${ev.reason ?? "—"})\n`;
     else out += `  [${tstr}] ${ev.type}\n`;

@@ -37,10 +37,10 @@ const transmission: GameModeHandler = {
     }
 
     // 3) transmission: la victime devient chasseur, l'ancien chasseur devient chassé
-    const roles: Record<string, "chasseur" | "chassé"> = { ...(room?.roles ?? {}) };
-    for (const uid of Object.keys(roles)) if (roles[uid] === "chasseur") roles[uid] = "chassé";
-    roles[victimUid] = "chasseur";
-    roles[hunterUid] = "chassé";
+    const roles: Record<string, "hunter" | "prey"> = { ...(room?.roles ?? {}) };
+    for (const uid of Object.keys(roles)) if (roles[uid] === "hunter") roles[uid] = "prey";
+    roles[victimUid] = "hunter";
+    roles[hunterUid] = "prey";
 
     // 4) écritures atomiques
     await db.runTransaction(async (tx) => {
@@ -52,7 +52,7 @@ const transmission: GameModeHandler = {
       // - iframe standard
       // - règle SANS RETAG: bloque la cible = "ancien chasseur" pendant NO_RETAG_MS
       tx.set(victimRef, {
-        role: "chasseur",
+        role: "hunter",
         iFrameUntilMs: now + VICTIM_IFRAME_MS,
         noRetagUid: hunterUid,                 // ⟵ NEW
         noRetagUntilMs: now + NO_RETAG_MS,     // ⟵ NEW
@@ -61,7 +61,7 @@ const transmission: GameModeHandler = {
       // ancien chasseur :
       // - petit lock anti-retag global (confort UX)
       tx.set(hunterRef, {
-        role: "chassé",
+        role: "prey",
         cantTagUntilMs: now + OLD_HUNTER_LOCK_MS,
         lastTagMs: now,
       }, { merge: true });

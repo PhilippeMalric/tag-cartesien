@@ -47,8 +47,8 @@ const infection: GameModeHandler = {
       if (hh.lastTagMs && now - hh.lastTagMs < HUNTER_COOLDOWN_MS) return;
 
       // 2) Rôles actuels depuis la room
-      const roomData = (roomSnap.data() || {}) as { roles?: Record<string, "chasseur" | "chassé" | string> };
-      const roles: Record<string, "chasseur" | "chassé" | string> = { ...(roomData.roles || (room as any)?.roles || {}) };
+      const roomData = (roomSnap.data() || {}) as { roles?: Record<string, "hunter" | "prey" | string> };
+      const roles: Record<string, "hunter" | "prey" | string> = { ...(roomData.roles || (room as any)?.roles || {}) };
 
       // Optionnel : si pas de rôles encore posés, on ne bloque pas mais on peut initialiser "soft"
       // (On ne force pas ici pour ne pas écraser un schéma de rôles existant côté client.)
@@ -58,7 +58,7 @@ const infection: GameModeHandler = {
       //    - +1 score pour le chasseur
       //    - lastTagMs pour le chasseur
       //    - iFrame pour la victime
-      //    - passage de la victime en "chasseur" dans la map des rôles
+      //    - passage de la victime en "hunter" dans la map des rôles
       tx.set(
         hunterRef,
         { score: FieldValue.increment(1), lastTagMs: now },
@@ -72,12 +72,12 @@ const infection: GameModeHandler = {
 
       // Met à jour les rôles (la victime devient chasseur)
       if (Object.keys(roles).length > 0) {
-        roles[victimUid] = "chasseur";
-        // (On ne force pas le hunter à "chassé" ici : en infection, plusieurs chasseurs peuvent coexister)
+        roles[victimUid] = "hunter";
+        // (On ne force pas le hunter à "prey" ici : en infection, plusieurs chasseurs peuvent coexister)
         tx.set(roomRef, { roles }, { merge: true });
       } else {
         // Si la room n'avait pas encore de map roles, on crée minimalement l'entrée de la victime.
-        tx.set(roomRef, { roles: { [victimUid]: "chasseur" } }, { merge: true });
+        tx.set(roomRef, { roles: { [victimUid]: "hunter" } }, { merge: true });
       }
     });
   },

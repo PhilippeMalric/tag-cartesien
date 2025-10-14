@@ -3,8 +3,8 @@ import type { Role } from '@tag/types';
 /** Normalise un libellé potentiel (FR/EN) vers Role EN. */
 export function frToRole(v: unknown): Role | null {
   if (v === 'hunter' || v === 'prey') return v;
-  if (v === 'chasseur') return 'hunter';
-  if (v === 'chassé') return 'prey';
+  if (v === 'hunter') return 'hunter';
+  if (v === 'prey') return 'prey';
   return null;
 }
 
@@ -21,7 +21,7 @@ export function toRoleMap(input?: Record<string, any> | null): Record<string, Ro
 
 /** Label FR pour affichage. */
 export function roleLabelFR(role?: Role | null): string {
-  if (role === 'hunter') return 'chasseur';
-  if (role === 'prey') return 'chassé';
+  if (role === 'hunter') return 'hunter';
+  if (role === 'prey') return 'prey';
   return '—';
 }

@@ -48,18 +48,18 @@ const infection = {
             //    - +1 score pour le chasseur
             //    - lastTagMs pour le chasseur
             //    - iFrame pour la victime
-            //    - passage de la victime en "chasseur" dans la map des rôles
+            //    - passage de la victime en "hunter" dans la map des rôles
             tx.set(hunterRef, { score: FieldValue.increment(1), lastTagMs: now }, { merge: true });
             tx.set(victimRef, { iFrameUntilMs: now + VICTIM_IFRAME_MS }, { merge: true });
             // Met à jour les rôles (la victime devient chasseur)
             if (Object.keys(roles).length > 0) {
-                roles[victimUid] = "chasseur";
-                // (On ne force pas le hunter à "chassé" ici : en infection, plusieurs chasseurs peuvent coexister)
+                roles[victimUid] = "hunter";
+                // (On ne force pas le hunter à "prey" ici : en infection, plusieurs chasseurs peuvent coexister)
                 tx.set(roomRef, { roles }, { merge: true });
             }
             else {
                 // Si la room n'avait pas encore de map roles, on crée minimalement l'entrée de la victime.
-                tx.set(roomRef, { roles: { [victimUid]: "chasseur" } }, { merge: true });
+                tx.set(roomRef, { roles: { [victimUid]: "hunter" } }, { merge: true });
             }
         });
     },

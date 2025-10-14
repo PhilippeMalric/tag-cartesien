@@ -40,7 +40,7 @@ export class MatchService {
   /** Flux d'événements typés @tag/types (ordre récent → ancien dans la collection) */
 events$ = (matchId: string): Observable<EventItem[]> => {
   const col = collection(this.fs, `rooms/${matchId}/events`);
-  const q  = query(col, orderBy('ts', 'desc'), limit(50));
+  const q  = query(col, orderBy('createdAt', 'desc'), limit(50));
   return collectionData(q, { idField: 'id' }).pipe(
     map(list => (list as EventItem[]).slice().reverse()),
     shareReplay({ bufferSize: 1, refCount: true })

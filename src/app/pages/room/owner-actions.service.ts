@@ -5,21 +5,13 @@ import { PlayerVM } from './room.component';
 import type { Role } from '@tag/types';
 
 type HunterScope = 'all' | 'ready';
-type RoleFR = 'chasseur' | 'chassé';
+type RoleFR = 'hunter' | 'prey';
 
-// --------- mapping FR -> EN (types partagés) ----------
-const ROLE_FR_TO_EN: Record<RoleFR, Role> = {
-  chasseur: 'hunter',
-  chassé: 'prey',
-};
 
-function toRole(rfr: RoleFR): Role {
-  return ROLE_FR_TO_EN[rfr];
-}
 
-function toRoleMapFR(mapFR: Record<string, RoleFR>): Record<string, Role> {
+function toRoleMapFR(mapFR: Record<string, Role>): Record<string, Role> {
   const out: Record<string, Role> = {};
-  for (const [uid, rfr] of Object.entries(mapFR)) out[uid] = toRole(rfr);
+  for (const [uid, rfr] of Object.entries(mapFR)) out[uid] = rfr;
   return out;
 }
 // ------------------------------------------------------
@@ -49,8 +41,8 @@ export class OwnerActionsService {
     const hunterUid = pool[idx].uid;
 
     // Affectation mono-chasseur (FR)
-    const rolesFR: Record<string, RoleFR> = {};
-    for (const p of all) rolesFR[p.uid] = p.uid === hunterUid ? 'chasseur' : 'chassé';
+    const rolesFR: Record<string, Role> = {};
+    for (const p of all) rolesFR[p.uid] = p.uid === hunterUid ? 'hunter' : 'prey';
 
     // ✅ Convertit en Role partagé avant écriture
     await this.roomSvc.setRoles(roomId, toRoleMapFR(rolesFR));
@@ -81,7 +73,7 @@ export class OwnerActionsService {
     const nextHunter = isCurrentlyHunter ? ownerUid : targetUid;
 
     const rolesFR: Record<string, RoleFR> = {};
-    for (const p of all) rolesFR[p.uid] = p.uid === nextHunter ? 'chasseur' : 'chassé';
+    for (const p of all) rolesFR[p.uid] = p.uid === nextHunter ? 'hunter' : 'prey';
 
     // ✅ converti en Role partagé
     await this.roomSvc.setRoles(roomId, toRoleMapFR(rolesFR));
@@ -114,8 +106,8 @@ export class OwnerActionsService {
     // Rôles actuels (FR)
     const rolesMapFR = { ...(await getCurrentRoles() || {}) } as Record<string, RoleFR>;
 
-    // Par défaut, chaque humain sans entrée reçoit 'chassé'
-    for (const p of players) if (!rolesMapFR[p.uid]) rolesMapFR[p.uid] = 'chassé';
+    // Par défaut, chaque humain sans entrée reçoit 'prey'
+    for (const p of players) if (!rolesMapFR[p.uid]) rolesMapFR[p.uid] = 'prey';
 
     // Détermine humains/bots à partir des listes
     const humanUids = new Set(players.map(p => p.uid));
@@ -123,23 +115,23 @@ export class OwnerActionsService {
 
     // Comptages utiles
     const countHumanHunters = Object.entries(rolesMapFR)
-      .filter(([uid, r]) => isHuman(uid) && r === 'chasseur').length;
+      .filter(([uid, r]) => isHuman(uid) && r === 'hunter').length;
 
     const countHumanRunners = Object.entries(rolesMapFR)
-      .filter(([uid, r]) => isHuman(uid) && r === 'chassé').length;
+      .filter(([uid, r]) => isHuman(uid) && r === 'prey').length;
 
     const hasBotRunner = Object.entries(rolesMapFR)
-      .some(([uid, r]) => !isHuman(uid) && r === 'chassé');
+      .some(([uid, r]) => !isHuman(uid) && r === 'prey');
 
     // Rôle cible (toggle, FR)
-    const nextRoleFR: RoleFR = isCurrentlyHunter ? 'chassé' : 'chasseur';
+    const nextRoleFR: RoleFR = isCurrentlyHunter ? 'prey' : 'hunter';
 
     // --- GARDE-FOUS ---
-    if (nextRoleFR === 'chassé' && isCurrentlyHunter && countHumanHunters <= 1) {
+    if (nextRoleFR === 'prey' && isCurrentlyHunter && countHumanHunters <= 1) {
       throw new Error('Il doit rester au moins un chasseur (humain).');
     }
 
-    if (nextRoleFR === 'chasseur') {
+    if (nextRoleFR === 'hunter') {
       const humanRunnersAfter = countHumanRunners - (isCurrentlyHunter ? 0 : 1);
       const thereWillBeAtLeastOneRunner = hasBotRunner || humanRunnersAfter >= 1;
       if (!thereWillBeAtLeastOneRunner) {
@@ -148,7 +140,7 @@ export class OwnerActionsService {
     }
 
     // ✅ écrit en Role partagé (EN) pour la clé cible seulement
-    await this.roomSvc.setRole(roomId, targetUid, toRole(nextRoleFR));
+    await this.roomSvc.setRole(roomId, targetUid, nextRoleFR);
     return nextRoleFR;
   }
 }

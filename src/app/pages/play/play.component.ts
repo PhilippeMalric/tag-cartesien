@@ -73,7 +73,7 @@ export class PlayComponent implements OnInit, OnDestroy {
   // Exposés au template
   matchId = '';
   uid = '';
-  role = 'chasseur' as any;
+  role = 'hunter' as any;
   myScore = 0;
   targetScore = 0;
   timeLeft = 0;

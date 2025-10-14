@@ -90,7 +90,7 @@ async function setStateStopped(roomId) {
 }
 async function setRoles(roomId, hunterUid, players) {
   const rolesMap = {};
-  for (const p of players) rolesMap[p.id] = (p.id === hunterUid ? "chasseur" : "chassé");
+  for (const p of players) rolesMap[p.id] = (p.id === hunterUid ? "hunter" : "prey");
   const batch = db.batch();
   batch.set(db.doc(`rooms/${roomId}`), { roles: rolesMap, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   for (const p of players) {
@@ -128,7 +128,7 @@ async function emitStartEvent(roomId, mode, meta = {}) {
   });
 }
 function currentHunter(roles = {}) {
-  return Object.entries(roles).find(([, r]) => r === "chasseur")?.[0] || null;
+  return Object.entries(roles).find(([, r]) => r === "hunter")?.[0] || null;
 }
 function printState(room, players) {
   console.log("\n— ÉTAT —");
@@ -146,7 +146,7 @@ function printState(room, players) {
 // TAG helpers (mécanique)
 async function pushTag(roomId, hunterUid, victimUid, x = 0, y = 0) {
   await db.collection(`rooms/${roomId}/events`).add({
-    type: "tag",
+    type: "tag/hit",
     hunterUid, victimUid, x, y,
     ts: FieldValue.serverTimestamp(),
   });
@@ -156,8 +156,8 @@ async function expectSwapAfterTag(roomId, prevHunter, prevVictim, waitMs = 700) 
   const room = await readRoom(roomId);
   const roles = room.roles || {};
   const ok =
-    roles[prevVictim] === "chasseur" &&
-    roles[prevHunter] === "chassé";
+    roles[prevVictim] === "hunter" &&
+    roles[prevHunter] === "prey";
   return { ok, room };
 }
 

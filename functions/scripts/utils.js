@@ -40,7 +40,7 @@ export async function setRoles(roomId, roles) {
 export async function emitTag(roomId, hunterUid, victimUid, x = 0, y = 0) {
     const d = db();
     return await d.collection(`rooms/${roomId}/events`).add({
-        type: "tag",
+        type: "tag/hit",
         hunterUid, victimUid, x, y,
         ts: FieldValue.serverTimestamp()
     });

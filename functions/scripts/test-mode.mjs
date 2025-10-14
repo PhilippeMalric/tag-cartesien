@@ -65,7 +65,7 @@ async function main() {
   const targetScore = Number.isFinite(Number(targetScoreArg)) ? Number(targetScoreArg) : undefined;
   if (targetScore != null) base["targetScore"] = targetScore;
 
-  const roles = { [hunterUid]: "chasseur", [victimUid]: "chassé" };
+  const roles = { [hunterUid]: "hunter", [victimUid]: "prey" };
 
   await roomRef.set(base, { merge: true });
   await roomRef.set({ roles }, { merge: true });
@@ -78,7 +78,7 @@ async function main() {
   step("Création de l'event tag");
   console.time("write:event");
   const evRef = await db.collection(`rooms/${roomId}/events`).add({
-    type: "tag",
+    type: "tag/hit",
     hunterUid,
     victimUid,
     x: 0,

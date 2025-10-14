@@ -9,7 +9,7 @@ import { handlers } from "./modes/index.js";
 // -----------------------------------------------------------------------------
 initializeApp();
 setGlobalOptions({
-    region: "northamerica-northeast1",
+    region: "us-central1",
     maxInstances: 10,
 });
 // -----------------------------------------------------------------------------
@@ -20,7 +20,7 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
     if (!snap)
         return;
     const data = snap.data();
-    if (data?.type !== "tag")
+    if (data?.type !== "tag/hit")
         return;
     const roomId = event.params.roomId;
     const hunterUid = data.hunterUid;
@@ -103,7 +103,7 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
             }
         }
         else {
-            // 2b) all_infected : fin si tous les joueurs sont "chasseur"
+            // 2b) all_infected : fin si tous les joueurs sont "hunter"
             // Variante optimisée : si room maintient huntersCount/playersCount
             const freshRoom = ((await roomRef.get()).data() || {});
             const huntersCount = freshRoom.huntersCount ?? room.huntersCount;
@@ -122,7 +122,7 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
                 const total = playersCol.size;
                 let hunters = 0;
                 for (const uid of Object.keys(roles)) {
-                    if (roles[uid] === "chasseur")
+                    if (roles[uid] === "hunter")
                         hunters++;
                 }
                 if (total > 0 && hunters >= total) {

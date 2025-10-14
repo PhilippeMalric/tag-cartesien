@@ -50,7 +50,7 @@ export function attachSubscriptions(ctx: PlayCtx, ls: LocalState) {
     if (ctx.hunterUid) {
       hunter = players.find((p: any) => p?.uid === ctx.hunterUid || p?.id === ctx.hunterUid) ?? null;
     }
-    if (!hunter) hunter = players.find((p: any) => p?.role === 'chasseur') ?? null;
+    if (!hunter) hunter = players.find((p: any) => p?.role === 'hunter') ?? null;
 
     ctx.myScore = hunter?.score ?? 0;
     ctx.cd.markForCheck();
@@ -99,9 +99,9 @@ export function attachSubscriptions(ctx: PlayCtx, ls: LocalState) {
           } catch {}
         });
       }
-      const chasseurUids = Object.keys(roles).filter((k) => roles[k] === 'chasseur');
+      const chasseurUids = Object.keys(roles).filter((k) => roles[k] === 'hunter');
       ctx.hunterUid = chasseurUids[0] ?? null;
-      if (chasseurUids.length > 1) console.warn('[setupPlay] Plusieurs "chasseur":', chasseurUids);
+      if (chasseurUids.length > 1) console.warn('[setupPlay] Plusieurs "hunter":', chasseurUids);
     }
 
     const endMs = room.roundEndAtMs as number | undefined;
@@ -133,24 +133,28 @@ export function attachSubscriptions(ctx: PlayCtx, ls: LocalState) {
   /* ===================== EVENTS (annonces + respawn si je suis victime) ===================== */
   ls.eventsSub = ctx.match.events$(ctx.matchId).subscribe((events: EventItem[]) => {
     for (const ev of events) {
+      console.log('[setupPlay] event', ev );
+      
       // ——— Discrimination par type
       if (isTagHitEvent(ev)) {
         const hit = ev as TagHitEvent;
 
         // id stable pour éviter les doublons de traitement
-        const id = hit.id ?? `tag/hit:${hit.hunterUid}:${hit.preyUid}:${hit.ts}`;
+        const id = hit.id ?? `tag/hit:${hit.payload.byUid}:${hit.payload.targetUid}:${hit.ts}`;
         if (ls.handledEventIds.has(id)) continue;
         ls.handledEventIds.add(id);
 
         // bandeau récent
         ctx.recentTag = {
-          label: `${hit.hunterUid.slice(0, 6)} a tagué ${hit.preyUid.slice(0, 6)}`,
+          label: `${hit.payload.byUid.slice(0, 6)} a tagué ${hit.payload.targetUid.slice(0, 6)}`,
           until: Date.now() + 2500,
         };
 
         // respawn si JE suis la victime en mode classic
-        if (hit.preyUid === ctx.uid && ls.mode === 'classic') {
-          const { x, y } = pickRespawn(hit.x, hit.y);
+        if (hit.payload.targetUid === ctx.uid && ls.mode === 'classic') {
+          console.log('[setupPlay] Je suis tagué, je respawn !');
+          
+          const { x, y } = pickRespawn(hit.payload.x, hit.payload.y);
           ctx.me.x = x; ctx.me.y = y;
 
           ctx.invulnerableUntil = performance.now() + GAME_CONSTANTS.INVULN_MS;

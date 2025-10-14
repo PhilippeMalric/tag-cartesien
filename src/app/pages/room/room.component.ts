@@ -69,14 +69,14 @@ import { PositionsService } from '../play';
 
 // --- UI role mapping (FR <-> EN d’affichage) ---
 type HunterScope = 'all' | 'ready';
-type RoleFR = 'chasseur' | 'chassé';
+type RoleFR = 'hunter' | 'prey';
 type RoleAny = RoleFR | 'hunter' | 'prey';
 
 function toFR(r: RoleAny | null | undefined): RoleFR | null {
   if (!r) return null;
   const s = String(r).toLowerCase();
-  if (s === 'hunter' || s === 'chasseur') return 'chasseur';
-  if (s === 'prey'   || s === 'chassé')   return 'chassé';
+  if (s === 'hunter' || s === 'hunter') return 'hunter';
+  if (s === 'prey'   || s === 'prey')   return 'prey';
   return null;
 }
 
@@ -414,7 +414,7 @@ export class RoomComponent implements OnInit, OnDestroy {
 
     const getCurrentRoles = async () => {
       const r = await firstValueFrom(this.room$);
-      return (r?.roles ?? null) as Record<string, 'chasseur' | 'chassé'> | null;
+      return (r?.roles ?? null) as Record<string, 'hunter' | 'prey'> | null;
     };
 
     try {
@@ -426,7 +426,7 @@ export class RoomComponent implements OnInit, OnDestroy {
         getCurrentRoles
       );
 
-      const msg = (newRole === 'chasseur') ? 'Défini comme chasseur' : 'Rendu chassé';
+      const msg = (newRole === 'hunter') ? 'Défini comme chasseur' : 'Rendu chassé';
       this.snack.open(msg, 'OK', { duration: 2000 });
       this.log(`Owner: toggle hunter → ${targetUid} = ${newRole}`);
     } catch (e: any) {

@@ -45,7 +45,7 @@ const db = getFirestore();
   await roomRef.set(base, { merge: true });
 
   // Pose les rôles de départ
-  const roles = { [hunterUid]: "chasseur", [victimUid]: "chassé" };
+  const roles = { [hunterUid]: "hunter", [victimUid]: "prey" };
   await roomRef.set({ roles }, { merge: true });
 
   // Prépare les players

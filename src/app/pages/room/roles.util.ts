@@ -5,7 +5,7 @@ export type RoleMap = Record<string, Role | undefined>;
 
 /** Type guard pour une valeur Role valide */
 function isRole(v: unknown): v is Role | null | undefined {
-  return v === 'chasseur' || v === 'chassé' || v === null || typeof v === 'undefined';
+  return v === 'hunter' || v === 'prey' || v === null || typeof v === 'undefined';
 }
 
 /** 

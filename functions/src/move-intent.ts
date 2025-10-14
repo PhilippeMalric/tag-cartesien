@@ -4,7 +4,7 @@ import { getDatabase } from 'firebase-admin/database';
 // ⛔️ pas d'initializeApp() ici : déjà fait dans index.ts
 
 export const onIntent = onValueWritten(
-  { ref: '/rooms/{roomId}/intents/{uid}/{seq}', region: 'northamerica-northeast1' },
+  { ref: '/rooms/{roomId}/intents/{uid}/{seq}', region: 'us-central1' },
   async (event) => {
     const { roomId, uid, seq } = event.params;
     const after = event.data.after.val();

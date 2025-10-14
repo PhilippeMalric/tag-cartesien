@@ -10,7 +10,7 @@ import { setRoomOwnerCore } from "./lib/owners.js";
 import { getDatabase } from "firebase-admin/database";
 
 initializeApp();
-setGlobalOptions({ region: "northamerica-northeast1", maxInstances: 10 });
+setGlobalOptions({ region: "us-central1", maxInstances: 10 });
 
 
 const db = getFirestore();
@@ -77,7 +77,7 @@ type PlayerDoc = {
   combo?: number;
   lastTagMs?: number;
   iFrameUntilMs?: number;
-  role?: "chasseur" | "chassé" | string;
+  role?: "hunter" | "prey" | string;
 };
 type RoomDoc = {
   mode?: "classic" | "transmission" | "infection" | string;
@@ -102,7 +102,7 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
   if (!snap) return;
 
   const data = snap.data() as TagEventData;
-  if (data?.type !== "tag") return;
+  if (data?.type !== "tag/hit") return;
 
   const roomId = event.params.roomId as string;
   const hunterUid = data.hunterUid as string | undefined;
@@ -216,7 +216,7 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
         const total = playersCol.size;
         let hunters = 0;
         for (const uid of Object.keys(roles)) {
-          if (roles[uid] === "chasseur") hunters++;
+          if (roles[uid] === "hunter") hunters++;
         }
         if (total > 0 && hunters >= total) {
           await roomRef.set({ state: "ended", endedAt: Date.now() }, { merge: true });

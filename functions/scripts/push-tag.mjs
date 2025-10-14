@@ -21,14 +21,14 @@ async function main() {
     mode: "classic",
     targetScore: 3,
     state: "running",
-    roles: { [hunterUid]: "chasseur", [victimUid]: "chassé" }
+    roles: { [hunterUid]: "hunter", [victimUid]: "prey" }
   }, { merge: true });
 
   await db.doc(`rooms/${roomId}/players/${hunterUid}`).set({ score: 0 }, { merge: true });
   await db.doc(`rooms/${roomId}/players/${victimUid}`).set({}, { merge: true });
 
   await db.collection(`rooms/${roomId}/events`).add({
-    type: "tag",
+    type: "tag/hit",
     hunterUid,
     victimUid,
     x: 0, y: 0,

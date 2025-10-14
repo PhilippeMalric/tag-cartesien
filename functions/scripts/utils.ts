@@ -10,7 +10,7 @@ export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 export const now = () => Date.now();
 export const rid = (len = 6) => Math.random().toString(36).slice(2, 2 + len).toUpperCase();
 
-export type Role = "chasseur" | "chassé";
+export type Role = "hunter" | "prey";
 export async function createRoom(params: {
   mode: "classic" | "transmission" | "infection",
   targetScore?: number,
@@ -49,7 +49,7 @@ export async function setRoles(roomId: string, roles: Record<string, Role>) {
 export async function emitTag(roomId: string, hunterUid: string, victimUid: string, x = 0, y = 0) {
   const d = db();
   return await d.collection(`rooms/${roomId}/events`).add({
-    type: "tag",
+    type: "tag/hit",
     hunterUid, victimUid, x, y,
     ts: FieldValue.serverTimestamp()
   });

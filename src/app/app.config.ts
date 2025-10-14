@@ -85,7 +85,7 @@ console.log('[shouldUseEmulators]', shouldUseEmulators, 'host=', IS_BROWSER ? wi
 
       // 4) (Optionnel) Functions
       provideFunctions(() => {
-        const fns = getFunctions(undefined, 'northamerica-northeast1');
+        const fns = getFunctions(undefined, 'us-central1');
         if (shouldUseEmulators) connectFunctionsEmulator(fns, '127.0.0.1', 5001);
         return fns;
       }),

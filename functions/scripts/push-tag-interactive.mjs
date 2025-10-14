@@ -55,7 +55,7 @@ async function ensureRoomAndPlayers(roomId, hunterUid, victimUid, targetScore) {
 async function pushTagEvent(roomId, hunterUid, victimUid) {
   const evRef = db.collection(`rooms/${roomId}/events`).doc();
   await evRef.set({
-    type: "tag",
+    type: "tag/hit",
     hunterUid,
     victimUid,
     ts: FieldValue.serverTimestamp(),

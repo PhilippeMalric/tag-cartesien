@@ -37,7 +37,7 @@ service cloud.firestore {
       );
     }
 
-    // Accepte 'chasseur' (FR) OU 'hunter' (EN), rôles null/absent protégés
+    // Accepte 'hunter' (FR) OU 'hunter' (EN), rôles null/absent protégés
     function isHunter(roomId, uid) {
       let pPath = playerRef(roomId, uid);
       let hasPlayer = exists(pPath);
@@ -46,8 +46,8 @@ service cloud.firestore {
       let rolesMap = get(roomRef(roomId)).data.roles;
       let roleFromMap = rolesMap != null ? rolesMap[uid] : null;
 
-      return roleFromPlayer == 'chasseur' || roleFromPlayer == 'hunter'
-          || roleFromMap    == 'chasseur' || roleFromMap    == 'hunter';
+      return roleFromPlayer == 'hunter' || roleFromPlayer == 'hunter'
+          || roleFromMap    == 'hunter' || roleFromMap    == 'hunter';
     }
 
     // Pour UPDATE seulement (resource existe)
