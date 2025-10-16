@@ -3,7 +3,8 @@ import type { PlayCtx } from './play.types';
 import { attachKeyboard, detachKeyboard } from './setup/keyboard';
 import { createLocalState, isOwnerNow } from './setup/local-state';
 import { startGameLoop, stopGameLoop } from './setup/loop';
-import { attachSubscriptions, detachSubscriptions } from './setup/subscriptions';
+import { attachSubscriptions } from './setup/attach';
+import { detachSubscriptions } from './setup/detach';
 
 
 export function setupPlay(ctx: PlayCtx): () => void {

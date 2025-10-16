@@ -3,7 +3,8 @@ import { authState, Auth as FirebaseAuth } from '@angular/fire/auth';
 import {
   Firestore,
   doc, docData, collection, collectionData,
-  updateDoc, query, orderBy, limit, getDoc, addDoc, serverTimestamp
+  updateDoc, query, orderBy, limit, getDoc, addDoc, serverTimestamp,
+  increment
 } from '@angular/fire/firestore';
 
 import { Observable, firstValueFrom, map, shareReplay } from 'rxjs';
@@ -143,4 +144,59 @@ events$ = (matchId: string): Observable<EventItem[]> => {
     const q = query(col, orderBy('score', 'desc'), limit(top));
     return collectionData(q, { idField: 'uid' }) as any;
   }
+
+
+  /**
+     * Incrémente mon score de `delta` (ex: +1 ou -1).
+     * Sécurisé sur mon propre doc joueurs (rooms/{matchId}/players/{uid}).
+     */
+    async updateMyScore(matchId: string, delta: number): Promise<void> {
+      const uid = this.uid;
+      if (!uid) throw new Error('no-auth');
+      const ref = doc(this.fs, `rooms/${matchId}/players/${uid}`);
+      await updateDoc(ref, {
+        score: increment(delta),
+        updatedAt: serverTimestamp(),
+      } as any);
+    }
+
+    /**
+     * Change mon rôle pour `role` ('hunter' | 'prey' | 'bot').
+     * Optionnel: réinitialise les champs liés à la survie quand on devient 'prey'.
+     */
+    async setMyRole(matchId: string, role: Role): Promise<void> {
+      const uid = this.uid;
+      if (!uid) throw new Error('no-auth');
+      const ref = doc(this.fs, `rooms/${matchId}/players/${uid}`);
+
+      const patch: any = { role, updatedAt: serverTimestamp() };
+
+      // petit confort: si je deviens 'prey', on repart un cycle de survie
+      if (role === 'prey') {
+        const now = Date.now();
+        patch.safeSinceMs = now;
+        patch.survivalTicks = 0;
+        // (ne pas toucher au score ici)
+      }
+
+      await updateDoc(ref, patch);
+    }
+
+    /**
+     * Variante pratique pour ton feature : +1 point ET +1 survivalTick,
+     * à appeler quand le timer local de la proie arrive à 0.
+     */
+    async awardPreyTick(matchId: string): Promise<void> {
+      const uid = this.uid;
+      if (!uid) throw new Error('no-auth');
+      const ref = doc(this.fs, `rooms/${matchId}/players/${uid}`);
+      await updateDoc(ref, {
+        score: increment(1),
+        survivalTicks: increment(1),
+        updatedAt: serverTimestamp(),
+      } as any);
+    }
+
+
+
 }

@@ -1,5 +1,5 @@
 
-===== FILE: bot.service.ts (2731 bytes) | generated 2025-10-16 01:44:35.661 UTC =====
+===== FILE: bot.service.ts (2731 bytes) | generated 2025-10-16 15:22:11.713 UTC =====
 import { Injectable, inject } from '@angular/core';
 import { Database, ref, set, onDisconnect } from '@angular/fire/database';
 
@@ -77,7 +77,7 @@ export class BotService {
   }
 }
 
-===== FILE: index.ts (250 bytes) | generated 2025-10-16 01:44:35.663 UTC =====
+===== FILE: index.ts (250 bytes) | generated 2025-10-16 15:22:11.716 UTC =====
 export * from './play.models';
 export * from './positions.service';
 export * from './match.service';
@@ -86,13 +86,14 @@ export * from './play.renderer';
 export * from './play.setup';
 export * from './play.helpers'; // ← nouveau
 
-===== FILE: match.service.ts (5204 bytes) | generated 2025-10-16 01:44:35.664 UTC =====
+===== FILE: match.service.ts (6946 bytes) | generated 2025-10-16 15:22:11.717 UTC =====
 import { Injectable, inject } from '@angular/core';
 import { authState, Auth as FirebaseAuth } from '@angular/fire/auth';
 import {
   Firestore,
   doc, docData, collection, collectionData,
-  updateDoc, query, orderBy, limit, getDoc, addDoc, serverTimestamp
+  updateDoc, query, orderBy, limit, getDoc, addDoc, serverTimestamp,
+  increment
 } from '@angular/fire/firestore';
 
 import { Observable, firstValueFrom, map, shareReplay } from 'rxjs';
@@ -232,9 +233,64 @@ events$ = (matchId: string): Observable<EventItem[]> => {
     const q = query(col, orderBy('score', 'desc'), limit(top));
     return collectionData(q, { idField: 'uid' }) as any;
   }
+
+
+  /**
+     * Incrémente mon score de `delta` (ex: +1 ou -1).
+     * Sécurisé sur mon propre doc joueurs (rooms/{matchId}/players/{uid}).
+     */
+    async updateMyScore(matchId: string, delta: number): Promise<void> {
+      const uid = this.uid;
+      if (!uid) throw new Error('no-auth');
+      const ref = doc(this.fs, `rooms/${matchId}/players/${uid}`);
+      await updateDoc(ref, {
+        score: increment(delta),
+        updatedAt: serverTimestamp(),
+      } as any);
+    }
+
+    /**
+     * Change mon rôle pour `role` ('hunter' | 'prey' | 'bot').
+     * Optionnel: réinitialise les champs liés à la survie quand on devient 'prey'.
+     */
+    async setMyRole(matchId: string, role: Role): Promise<void> {
+      const uid = this.uid;
+      if (!uid) throw new Error('no-auth');
+      const ref = doc(this.fs, `rooms/${matchId}/players/${uid}`);
+
+      const patch: any = { role, updatedAt: serverTimestamp() };
+
+      // petit confort: si je deviens 'prey', on repart un cycle de survie
+      if (role === 'prey') {
+        const now = Date.now();
+        patch.safeSinceMs = now;
+        patch.survivalTicks = 0;
+        // (ne pas toucher au score ici)
+      }
+
+      await updateDoc(ref, patch);
+    }
+
+    /**
+     * Variante pratique pour ton feature : +1 point ET +1 survivalTick,
+     * à appeler quand le timer local de la proie arrive à 0.
+     */
+    async awardPreyTick(matchId: string): Promise<void> {
+      const uid = this.uid;
+      if (!uid) throw new Error('no-auth');
+      const ref = doc(this.fs, `rooms/${matchId}/players/${uid}`);
+      await updateDoc(ref, {
+        score: increment(1),
+        survivalTicks: increment(1),
+        updatedAt: serverTimestamp(),
+      } as any);
+    }
+
+
+
 }
 
-===== FILE: play.component.html (2488 bytes) | generated 2025-10-16 01:44:35.665 UTC =====
+===== FILE: play.component.html (2488 bytes) | generated 2025-10-16 15:22:11.718 UTC =====
 
 <!-- Toolbar Material -->
 <mat-toolbar color="primary">
@@ -303,7 +359,7 @@ events$ = (matchId: string): Observable<EventItem[]> => {
   pos.uids: {{debug.posUids.join(',') || '∅'}}
 </div> -->
 
-===== FILE: play.component.scss (4753 bytes) | generated 2025-10-16 01:44:35.667 UTC =====
+===== FILE: play.component.scss (4753 bytes) | generated 2025-10-16 15:22:11.719 UTC =====
 .page {
   max-width: 960px;
   margin: 12px auto;
@@ -510,7 +566,7 @@ html.dark {
   --canvas-bg: #0b0d10;
 }
 
-===== FILE: play.component.ts (7114 bytes) | generated 2025-10-16 01:44:35.668 UTC =====
+===== FILE: play.component.ts (7112 bytes) | generated 2025-10-16 15:22:11.721 UTC =====
 import {
   Component, ElementRef, ViewChild, inject,
   OnInit, OnDestroy, ChangeDetectionStrategy,
@@ -586,7 +642,7 @@ export class PlayComponent implements OnInit, OnDestroy {
   // Exposés au template
   matchId = '';
   uid = '';
-  role = 'hunter' as any;
+  role = 'prey' as any;
   myScore = 0;
   targetScore = 0;
   timeLeft = 0;
@@ -708,7 +764,7 @@ this.dispose = setupPlay(this);
 
 }
 
-===== FILE: play.helpers.ts (1201 bytes) | generated 2025-10-16 01:44:35.669 UTC =====
+===== FILE: play.helpers.ts (1201 bytes) | generated 2025-10-16 15:22:11.722 UTC =====
 import { GAME_CONSTANTS } from './play.models';
 import type { PlayCtx } from './play.types';
 
@@ -742,7 +798,7 @@ export function findVictimWithinRadius(ctx: PlayCtx): { uid: string; dist: numbe
   return best;
 }
 
-===== FILE: play.models.ts (2174 bytes) | generated 2025-10-16 01:44:35.670 UTC =====
+===== FILE: play.models.ts (2199 bytes) | generated 2025-10-16 15:22:11.723 UTC =====
 
 
 // Position de base (x, y)
@@ -783,6 +839,7 @@ export interface RenderState {
   /** (Optionnel) feedback local temporaire, si tu le conserves */
   hunterIFrameUntilMs?: number;
 
+  hunterUids: string[];
 }
 
 export const PLAY_COLORS = {
@@ -813,7 +870,7 @@ export type MyPlayerDoc = PlayerDoc & {
 export type TagEvent = EventItem; // si des imports existants l’attendent encore
 export type PlayerRole = Role;    // alias pratique pour l’UI si tu l’utilisais
 
-===== FILE: play.renderer.ts (8559 bytes) | generated 2025-10-16 01:44:35.671 UTC =====
+===== FILE: play.renderer.ts (8586 bytes) | generated 2025-10-16 15:22:11.724 UTC =====
 // src/app/pages/play/play.renderer.ts
 import { RenderState } from './play.models';
 
@@ -1009,6 +1066,10 @@ export class PlayRenderer {
 
     // 🟠 tolère EN/FR pour “moi”
     const r = String(state.role ?? '').toLowerCase();
+
+console.log("r",r);
+
+
     const amHunter =
       r === 'hunter' || 
       (Array.isArray((state as any).hunterUids) &&
@@ -1032,13 +1093,14 @@ export class PlayRenderer {
   }
 }
 
-===== FILE: play.setup.ts (1365 bytes) | generated 2025-10-16 01:44:35.673 UTC =====
+===== FILE: play.setup.ts (1392 bytes) | generated 2025-10-16 15:22:11.726 UTC =====
 import { runInInjectionContext } from '@angular/core';
 import type { PlayCtx } from './play.types';
 import { attachKeyboard, detachKeyboard } from './setup/keyboard';
 import { createLocalState, isOwnerNow } from './setup/local-state';
 import { startGameLoop, stopGameLoop } from './setup/loop';
-import { attachSubscriptions, detachSubscriptions } from './setup/subscriptions';
+import { attachSubscriptions } from './setup/attach';
+import { detachSubscriptions } from './setup/detach';
 
 
 export function setupPlay(ctx: PlayCtx): () => void {
@@ -1079,7 +1141,7 @@ export function setupPlay(ctx: PlayCtx): () => void {
   };
 }
 
-===== FILE: play.types.ts (1878 bytes) | generated 2025-10-16 01:44:35.673 UTC =====
+===== FILE: play.types.ts (1878 bytes) | generated 2025-10-16 15:22:11.727 UTC =====
 import { ElementRef, ChangeDetectorRef, EnvironmentInjector, NgZone } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Auth as FirebaseAuth } from '@angular/fire/auth';
@@ -1147,7 +1209,7 @@ export interface PlayCtx {
   rtdb: Database;
 }
 
-===== FILE: positions.service.ts (3578 bytes) | generated 2025-10-16 01:44:35.674 UTC =====
+===== FILE: positions.service.ts (3578 bytes) | generated 2025-10-16 15:22:11.728 UTC =====
 import { Injectable, inject } from '@angular/core';
 import { Database, ref, set, onValue, off, onDisconnect } from '@angular/fire/database';
 import { BehaviorSubject, combineLatest, Subscription } from 'rxjs';
@@ -1243,7 +1305,7 @@ export class PositionsService {
   }
 }
 
-===== FILE: respawn.util.ts (563 bytes) | generated 2025-10-16 01:44:35.675 UTC =====
+===== FILE: respawn.util.ts (563 bytes) | generated 2025-10-16 15:22:11.728 UTC =====
 import { GAME_CONSTANTS } from './play.models';
 
 export function pickRespawn(hx?: number, hy?: number) {
@@ -1260,7 +1322,157 @@ export function pickRespawn(hx?: number, hy?: number) {
   };
 }
 
-===== FILE: setup\keyboard.ts (903 bytes) | generated 2025-10-16 01:44:35.676 UTC =====
+===== FILE: setup\attach.ts (1002 bytes) | generated 2025-10-16 15:22:11.730 UTC =====
+import type { PlayCtx } from '../play.types';
+import { attachBotsListener } from './bots.listener';
+import { attachEventsSub } from './events.sub';
+import type { LocalState } from './local-state';
+import { attachModeSub } from './mode.sub';
+import { attachMyPlayerSub } from './my-player.sub';
+import { attachPlayersSub } from './players.sub';
+import { attachPositionsSub } from './positions.sub';
+import { attachRoomSub } from './room.sub';
+
+
+
+export function attachSubscriptions(ctx: PlayCtx, ls: LocalState) {
+  // RTDB: bots
+  attachBotsListener(ctx, ls);
+
+  // Mode (classic/transmission…)
+  attachModeSub(ctx, ls);
+
+  // Players (scores + hunter)
+  attachPlayersSub(ctx, ls);
+
+  // Mon doc joueur
+  attachMyPlayerSub(ctx, ls);
+
+  // Room (roles / owner / timer / bots / fin)
+  attachRoomSub(ctx, ls);
+
+  // Events (annonces + respawn si je suis victime)
+  attachEventsSub(ctx, ls);
+
+  // Positions (humains + bots fusionnées)
+  attachPositionsSub(ctx, ls);
+}
+
+===== FILE: setup\bots.listener.ts (1047 bytes) | generated 2025-10-16 15:22:11.731 UTC =====
+import { ref, onValue, off } from '@angular/fire/database';
+import type { PlayCtx } from '../play.types';
+import type { LocalState } from './local-state';
+
+export function attachBotsListener(ctx: PlayCtx, ls: LocalState) {
+  let lastBots: Record<string, { x: number; y: number; t?: number; role?: string }> = {};
+
+  const botsRef = ref(ctx.rtdb, `bots/${ctx.matchId}`);
+  const botsHandler = (snap: any) => {
+    const raw = (snap.val() ?? {}) as Record<string, any>;
+    const clean: typeof lastBots = {};
+
+    for (const id of Object.keys(raw)) {
+      if (!id.startsWith('bot-')) continue; // convention UID bot
+      const b = raw[id] || {};
+      if (typeof b.x === 'number' && typeof b.y === 'number') {
+        clean[id] = { x: b.x, y: b.y, t: b.t, role: b.role };
+      }
+    }
+    (ls as any).lastBots = clean; // stocke dans ls pour positions.sub
+    ctx.cd.markForCheck();
+  };
+
+  onValue(botsRef, botsHandler);
+
+  // disposer pour detach
+  (ls as any).stopBots = () => off(botsRef, 'value', botsHandler);
+}
+
+===== FILE: setup\detach.ts (537 bytes) | generated 2025-10-16 15:22:11.732 UTC =====
+import type { PlayCtx } from '../play.types';
+import type { LocalState } from './local-state';
+
+export function detachSubscriptions(ctx: PlayCtx, ls: LocalState) {
+  ls.mySub?.unsubscribe?.();
+  ls.roomSub?.unsubscribe?.();
+  ls.eventsSub?.unsubscribe?.();
+  ls.playersSub?.unsubscribe?.();
+  ls.positionsSub?.unsubscribe?.();
+
+  (ls as any).stopBots?.();   // coupe le listener RTDB des bots
+  ctx.sub.unsubscribe();
+  ctx.positions.stop();
+
+  if (ls.timerId) clearInterval(ls.timerId);
+  ls.handledEventIds.clear();
+}
+
+===== FILE: setup\events.sub.ts (2047 bytes) | generated 2025-10-16 15:22:11.733 UTC =====
+import { runInInjectionContext } from '@angular/core';
+import { doc, updateDoc } from '@angular/fire/firestore';
+import type { PlayCtx } from '../play.types';
+import type { LocalState } from './local-state';
+import { pickRespawn } from '../respawn.util';
+import { GAME_CONSTANTS } from '../play.models';
+
+// types @tag/types
+import type { EventItem, TagHitEvent } from '@tag/types';
+import { isTagHitEvent } from '@tag/types';
+
+export function attachEventsSub(ctx: PlayCtx, ls: LocalState) {
+  ls.eventsSub = ctx.match.events$(ctx.matchId).subscribe((events: EventItem[]) => {
+    for (const ev of events) {
+      // ——— Discrimination par type
+      if (isTagHitEvent(ev)) {
+        const hit = ev as TagHitEvent;
+
+        // id stable pour éviter doublons
+        const id = hit.id ?? `tag/hit:${hit.payload.byUid}:${hit.payload.targetUid}:${hit.ts}`;
+        if (ls.handledEventIds.has(id)) continue;
+        ls.handledEventIds.add(id);
+
+        // bandeau
+        ctx.recentTag = {
+          label: `${hit.payload.byUid.slice(0, 6)} a tagué ${hit.payload.targetUid.slice(0, 6)}`,
+          until: Date.now() + 2500,
+        };
+
+        // respawn si JE suis victime (mode classic)
+        if (hit.payload.targetUid === ctx.uid && ls.mode === 'classic') {
+          const { x, y } = pickRespawn(hit.payload.x, hit.payload.y);
+          ctx.me.x = x; ctx.me.y = y;
+
+          ctx.invulnerableUntil = performance.now() + GAME_CONSTANTS.INVULN_MS;
+          const untilMs = Date.now() + GAME_CONSTANTS.INVULN_MS;
+
+          runInInjectionContext(ctx.env, async () => {
+            try {
+              const ref = doc(ctx.match.fs, `rooms/${ctx.matchId}/players/${ctx.uid}`);
+              await updateDoc(ref, { iFrameUntilMs: untilMs });
+            } catch {}
+          });
+
+          ctx.positions.writeSelf(ctx.matchId, ctx.uid, x, y, ctx.role as string);
+        }
+      } else {
+        // autres types: no-op (extension possible)
+      }
+    }
+    ctx.cd.markForCheck();
+  });
+}
+
+===== FILE: setup\helpers.move-cooldown.ts (277 bytes) | generated 2025-10-16 15:22:11.734 UTC =====
+import type { PlayCtx } from '../play.types';
+import { GAME_CONSTANTS } from '../play.models';
+
+export function moveCooldownMs(ctx: PlayCtx) {
+  return ctx.role === 'hunter'
+    ? GAME_CONSTANTS.MOVE_COOLDOWN_MS_CHASSEUR
+    : GAME_CONSTANTS.MOVE_COOLDOWN_MS_CHASSE;
+}
+
+===== FILE: setup\keyboard.ts (903 bytes) | generated 2025-10-16 15:22:11.735 UTC =====
 import type { PlayCtx } from '../play.types';
 import { LocalState } from './local-state';
 
@@ -1282,7 +1494,7 @@ export function detachKeyboard(_ls: LocalState) {
   if (up)   window.removeEventListener('keyup', up);
 }
 
-===== FILE: setup\local-state.ts (841 bytes) | generated 2025-10-16 01:44:35.678 UTC =====
+===== FILE: setup\local-state.ts (841 bytes) | generated 2025-10-16 15:22:11.736 UTC =====
 import type { PlayCtx } from '../play.types';
 
 export interface LocalState {
@@ -1316,7 +1528,7 @@ export function isOwnerNow(ctx: PlayCtx) {
   return !!ctx.uid && !!ctx.roomOwnerUid && ctx.uid === ctx.roomOwnerUid;
 }
 
-===== FILE: setup\loop.ts (4124 bytes) | generated 2025-10-16 01:44:35.679 UTC =====
+===== FILE: setup\loop.ts (4159 bytes) | generated 2025-10-16 15:22:11.736 UTC =====
 import { inject, runInInjectionContext } from '@angular/core';
 import type { PlayCtx } from '../play.types';
 import { GAME_CONSTANTS } from '../play.models';
@@ -1401,6 +1613,7 @@ export function startGameLoop(ctx: PlayCtx, ls: LocalState) {
       invulnerableUntil: ctx.invulnerableUntil,
       tagRadius: GAME_CONSTANTS.TAG_RADIUS,
       hunterIFrameUntilMs: ctx.hunterIFrameUntilMs,
+      hunterUids: ctx.hunterUids,
     });
 
     ls.rafId = requestAnimationFrame(loop);
@@ -1428,109 +1641,154 @@ function moveReady(ctx: PlayCtx) {
   return (performance.now() - ctx.lastMoveAt) >= moveCooldownMs(ctx);
 }
 
-===== FILE: setup\subscriptions.ts (9332 bytes) | generated 2025-10-16 01:44:35.680 UTC =====
-import { runInInjectionContext } from '@angular/core';
-import { doc, setDoc, updateDoc } from '@angular/fire/firestore';
+===== FILE: setup\mode.sub.ts (263 bytes) | generated 2025-10-16 15:22:11.737 UTC =====
 import type { PlayCtx } from '../play.types';
 import type { LocalState } from './local-state';
-import { isOwnerNow } from './local-state';
-import { pickRespawn } from '../respawn.util';
-import { GAME_CONSTANTS } from '../play.models';
-import type { Player } from '../../room/player.model';
-import { clamp } from '../play.helpers';
-import { ref, onValue, off } from '@angular/fire/database';
 
-// ✅ types & type guard depuis @tag/types (Option A)
-import type { EventItem, TagHitEvent } from '@tag/types';
-import { isTagHitEvent } from '@tag/types';
-
-export function attachSubscriptions(ctx: PlayCtx, ls: LocalState) {
-
-  /* ===================== BOTS (RTDB via ctx.rtdb) ===================== */
-  let lastBots: Record<string, { x: number; y: number; t?: number; role?: string }> = {};
-
-  // Écoute bots/{matchId} depuis l’autre appli (ou ton BotService)
-  const botsRef = ref(ctx.rtdb, `bots/${ctx.matchId}`);
-  const botsHandler = (snap: any) => {
-    const raw = (snap.val() ?? {}) as Record<string, any>;
-    const clean: typeof lastBots = {};
-
-    for (const id of Object.keys(raw)) {
-      if (!id.startsWith('bot-')) continue; // convention UID bot
-      const b = raw[id] || {};
-      if (typeof b.x === 'number' && typeof b.y === 'number') {
-        clean[id] = { x: b.x, y: b.y, t: b.t, role: b.role };
-      }
-    }
-    lastBots = clean;
-    ctx.cd.markForCheck();
-  };
-  onValue(botsRef, botsHandler);
-  // disposer pour detach
-  (ls as any).stopBots = () => off(botsRef, 'value', botsHandler);
-
-  /* ===================== MODE ===================== */
+export function attachModeSub(ctx: PlayCtx, ls: LocalState) {
   ctx.roomSvc.getMode$(ctx.matchId).subscribe((data: any) => {
     ls.mode = data || '';
   });
+}
 
-  /* ===================== PLAYERS (scores + hunter) ===================== */
-  ls.playersSub = ctx.roomSvc.players$(ctx.matchId).subscribe((players: Player[]) => {
-    ls.playersById = Object.fromEntries((players || []).map(p => [p.uid, p]));
-    let hunter: any = null;
-    
-    hunter = players.find((p: any) => p?.role === 'hunter') ?? null;
+===== FILE: setup\my-player.sub.ts (826 bytes) | generated 2025-10-16 15:22:11.738 UTC =====
+import { runInInjectionContext } from '@angular/core';
+import { doc } from '@angular/fire/firestore';
+import type { PlayCtx } from '../play.types';
+import type { LocalState } from './local-state';
+import { pickRespawn } from '../respawn.util';
+import { clamp } from '../play.helpers';
+import { moveCooldownMs } from './helpers.move-cooldown';
 
-    ctx.myScore = hunter?.score ?? 0;
-    ctx.cd.markForCheck();
-  });
-
-  /* ===================== MON DOC JOUEUR ===================== */
+export function attachMyPlayerSub(ctx: PlayCtx, ls: LocalState) {
   ls.mySub = ctx.match.myPlayer$(ctx.matchId).subscribe((d) => {
     if (d) {
-      ctx.role = (d.role ?? ctx.role ?? null) as any;
+        ctx.role = (d.role ?? ctx.role ?? null) as any;
 
-      if (!ls.didInitialSpawn) {
-        const sp = (d as any)?.spawn;
-        if (sp && Number.isFinite(sp.x) && Number.isFinite(sp.y)) {
-          ctx.me.x = clamp(sp.x, -50, 50);
-          ctx.me.y = clamp(sp.y, -50, 50);
-        } else {
-          const rnd = pickRespawn();
-          ctx.me.x = rnd.x;
-          ctx.me.y = rnd.y;
+        // ✅ mets à jour mon score depuis mon doc
+        if (typeof (d as any).score === 'number') {
+        ctx.myScore = (d as any).score;
         }
-        ctx.positions.writeSelf(ctx.matchId, ctx.uid, ctx.me.x, ctx.me.y, ctx.role as string);
-        ctx.lastMoveAt = performance.now() - moveCooldownMs(ctx);
-        ctx.moveProgress = 100;
-        ls.didInitialSpawn = true;
-      }
+
+        // ... le reste (spawn, positions, cooldown, etc.)
     }
     ctx.cd.markForCheck();
-  });
+    });
+}
 
-  /* ===================== ROOM (roles / owner / timer / auto-bots / fin) ===================== */
+===== FILE: setup\players.sub.ts (565 bytes) | generated 2025-10-16 15:22:11.739 UTC =====
+import type { PlayCtx } from '../play.types';
+import type { LocalState } from './local-state';
+import type { Player } from '../../room/player.model';
+
+export function attachPlayersSub(ctx: PlayCtx, ls: LocalState) {
+  ls.playersSub = ctx.roomSvc.players$(ctx.matchId).subscribe((players: Player[]) => {
+    ls.playersById = Object.fromEntries((players || []).map(p => [p.uid, p]));
+
+    const me = players.find((p: any) => p?.uid === ctx.uid) as any;
+    ctx.myScore = typeof me?.score === 'number' ? me.score : 0;
+
+    ctx.cd.markForCheck();
+  });
+}
+
+===== FILE: setup\positions.sub.ts (2266 bytes) | generated 2025-10-16 15:22:11.740 UTC =====
+import type { PlayCtx } from '../play.types';
+import type { LocalState } from './local-state';
+
+export function attachPositionsSub(ctx: PlayCtx, ls: LocalState) {
+  ctx.positions.attachPresence(ctx.matchId, ctx.uid);
+  ctx.positions.startListening(ctx.matchId);
+
+  ls.positionsSub = ctx.positions.positions$.subscribe((map) => {
+    // liste des hunters (fusion FR/EN)
+    const hunters: string[] = [];
+    for (const [id, p] of Object.entries(map)) {
+      const r = String((p as any)?.role ?? '').toLowerCase();
+      if (r === 'hunter' || r === 'chasseur') hunters.push(id);
+    }
+    ctx.hunterUids = Array.from(new Set(hunters));
+
+    ctx.debug.posUids = Object.keys(map || {});
+    ctx.others.clear();
+
+    // anneau "moi"
+    const mePlayer = ls.playersById[ctx.uid];
+    if (mePlayer) {
+      const myEpoch =
+        (typeof (mePlayer as any).iFrameUntilMs === 'number' ? (mePlayer as any).iFrameUntilMs : null)
+        ?? (typeof (mePlayer as any).cantTagUntilMs === 'number' ? (mePlayer as any).cantTagUntilMs : null);
+      ctx.invulnerableUntil = myEpoch && myEpoch > Date.now()
+        ? performance.now() + (myEpoch - Date.now())
+        : 0;
+    }
+
+    // 1) HUMANS (sauf moi)
+    for (const [id, p] of Object.entries(map || {})) {
+      if (id === ctx.uid) continue;
+      const pos: any = p as any;
+      if (pos?.x == null || pos?.y == null) continue;
+
+      const pl = ls.playersById[id];
+      const ringEpoch =
+        (pl && typeof (pl as any).iFrameUntilMs === 'number' ? (pl as any).iFrameUntilMs : null)
+        ?? (pl && typeof (pl as any).cantTagUntilMs === 'number' ? (pl as any).cantTagUntilMs : null);
+
+      ctx.others.set(id, {
+        x: pos.x,
+        y: pos.y,
+        iFrameUntilMs: ringEpoch && ringEpoch > Date.now() ? ringEpoch : undefined,
+        ringKind: pl ? ((pl as any).role === 'hunter' ? 'hunter' : 'prey') : 'prey',
+      });
+    }
+
+    // 2) BOTS (depuis RTDB mis par bots.listener)
+    const lastBots = (ls as any).lastBots as Record<string, { x: number; y: number }> | undefined;
+    if (lastBots) {
+      for (const [id, b] of Object.entries(lastBots)) {
+        ctx.others.set(id, { x: b.x, y: b.y });
+      }
+    }
+
+    ctx.cd.markForCheck();
+  });
+}
+
+===== FILE: setup\room.sub.ts (2153 bytes) | generated 2025-10-16 15:22:11.740 UTC =====
+import { runInInjectionContext } from '@angular/core';
+import { doc, setDoc } from '@angular/fire/firestore';
+import type { PlayCtx } from '../play.types';
+import type { LocalState } from './local-state';
+import { isOwnerNow } from './local-state';
+
+export function attachRoomSub(ctx: PlayCtx, ls: LocalState) {
   ls.roomSub = ctx.match.room$(ctx.matchId).subscribe((room) => {
     if (!room) return;
 
     ctx.roomOwnerUid = room.ownerUid ?? null;
-    ctx.targetScore = room.targetScore ?? 0;
+    ctx.targetScore  = room.targetScore ?? 0;
 
     const roles = (room.roles ?? null) as any;
     if (roles) {
       const mine = roles[ctx.uid] ?? null;
       if (mine && ctx.role !== mine) {
         ctx.role = mine;
+
+        // miroir Firestore player.role
         runInInjectionContext(ctx.env, async () => {
           try {
             const ref = doc(ctx.match.fs, `rooms/${ctx.matchId}/players/${ctx.uid}`);
             await setDoc(ref, { role: mine }, { merge: true });
           } catch {}
         });
+
+        // miroir RTDB positions pour que le canvas voie le bon rôle tout de suite
+        ctx.positions.writeSelf(ctx.matchId, ctx.uid, ctx.me.x, ctx.me.y, ctx.role as string)
+          .catch(() => {});
       }
+
       const chasseurUids = Object.keys(roles).filter((k) => roles[k] === 'hunter');
-      
-      if (chasseurUids.length > 1) console.warn('[setupPlay] Plusieurs "hunter":', chasseurUids);
+      // (log éventuel inchangé)
     }
 
     const endMs = room.roundEndAtMs as number | undefined;
@@ -1558,132 +1816,9 @@ export function attachSubscriptions(ctx: PlayCtx, ls: LocalState) {
     }
     ctx.cd.markForCheck();
   });
-
-  /* ===================== EVENTS (annonces + respawn si je suis victime) ===================== */
-  ls.eventsSub = ctx.match.events$(ctx.matchId).subscribe((events: EventItem[]) => {
-    for (const ev of events) {
-      console.log('[setupPlay] event', ev );
-      
-      // ——— Discrimination par type
-      if (isTagHitEvent(ev)) {
-        const hit = ev as TagHitEvent;
-
-        // id stable pour éviter les doublons de traitement
-        const id = hit.id ?? `tag/hit:${hit.payload.byUid}:${hit.payload.targetUid}:${hit.ts}`;
-        if (ls.handledEventIds.has(id)) continue;
-        ls.handledEventIds.add(id);
-
-        // bandeau récent
-        ctx.recentTag = {
-          label: `${hit.payload.byUid.slice(0, 6)} a tagué ${hit.payload.targetUid.slice(0, 6)}`,
-          until: Date.now() + 2500,
-        };
-
-        // respawn si JE suis la victime en mode classic
-        if (hit.payload.targetUid === ctx.uid && ls.mode === 'classic') {
-          console.log('[setupPlay] Je suis tagué, je respawn !');
-          
-          const { x, y } = pickRespawn(hit.payload.x, hit.payload.y);
-          ctx.me.x = x; ctx.me.y = y;
-
-          ctx.invulnerableUntil = performance.now() + GAME_CONSTANTS.INVULN_MS;
-          const untilMs = Date.now() + GAME_CONSTANTS.INVULN_MS;
-
-          runInInjectionContext(ctx.env, async () => {
-            try {
-              const ref = doc(ctx.match.fs, `rooms/${ctx.matchId}/players/${ctx.uid}`);
-              await updateDoc(ref, { iFrameUntilMs: untilMs });
-            } catch {}
-          });
-
-          ctx.positions.writeSelf(ctx.matchId, ctx.uid, x, y, ctx.role as string);
-        }
-      } else {
-        // autres types d’événements : no-op (ou ajoute tes handlers ici)
-        // const id = ev.id ?? `${ev.type}:${ev.ts}`;
-        // if (!ls.handledEventIds.has(id)) { ... }
-      }
-    }
-    ctx.cd.markForCheck();
-  });
-
-  /* ===================== POSITIONS (merge HUMANS + BOTS) ===================== */
-  ctx.positions.attachPresence(ctx.matchId, ctx.uid);
-  ctx.positions.startListening(ctx.matchId);
-
-  ls.positionsSub = ctx.positions.positions$.subscribe((map) => {
-    
-  const hunters: string[] = [];
-  for (const [id, p] of Object.entries(map)) {
-    const r = String(p?.role ?? '').toLowerCase();
-    if (r === 'hunter' || r === 'chasseur') hunters.push(id);
-  }
-  ctx.hunterUids = Array.from(new Set(hunters));
-
-
-    ctx.debug.posUids = Object.keys(map || {});
-    ctx.others.clear();
-
-    // anneau "moi"
-    const mePlayer = ls.playersById[ctx.uid];
-    if (mePlayer) {
-      const myEpoch =
-        (typeof mePlayer.iFrameUntilMs === 'number' ? mePlayer.iFrameUntilMs : null)
-        ?? (typeof mePlayer.cantTagUntilMs === 'number' ? mePlayer.cantTagUntilMs : null);
-      ctx.invulnerableUntil = myEpoch && myEpoch > Date.now()
-        ? performance.now() + (myEpoch - Date.now())
-        : 0;
-    }
-
-    // 1) HUMANS (sauf moi)
-    for (const [id, p] of Object.entries(map || {})) {
-      if (id === ctx.uid) continue;
-      const pos: any = p as any;
-      if (pos?.x == null || pos?.y == null) continue;
-
-      const pl = ls.playersById[id];
-      const ringEpoch =
-        (pl && typeof pl.iFrameUntilMs === 'number' ? pl.iFrameUntilMs : null)
-        ?? (pl && typeof pl.cantTagUntilMs === 'number' ? pl.cantTagUntilMs : null);
-
-      ctx.others.set(id, {
-        x: pos.x,
-        y: pos.y,
-        iFrameUntilMs: ringEpoch && ringEpoch > Date.now() ? ringEpoch : undefined,
-        ringKind: pl ? (pl.role === 'hunter' ? 'hunter' : 'prey') : 'prey',
-      });
-    }
-
-    // 2) BOTS (depuis RTDB via lastBots)
-    for (const [id, b] of Object.entries(lastBots)) {
-      ctx.others.set(id, { x: b.x, y: b.y });
-    }
-
-    ctx.cd.markForCheck();
-  });
 }
 
-export function detachSubscriptions(ctx: PlayCtx, ls: LocalState) {
-  ls.mySub?.unsubscribe?.();
-  ls.roomSub?.unsubscribe?.();
-  ls.eventsSub?.unsubscribe?.();
-  ls.playersSub?.unsubscribe?.();
-  ls.positionsSub?.unsubscribe?.();
-  (ls as any).stopBots?.(); // ✅ coupe le listener RTDB des bots
-  ctx.sub.unsubscribe();
-  ctx.positions.stop();
-  if (ls.timerId) clearInterval(ls.timerId);
-  ls.handledEventIds.clear();
-}
-
-/* === Helpers === */
-function moveCooldownMs(ctx: PlayCtx) {
-  return ctx.role === 'hunter'
-    ? GAME_CONSTANTS.MOVE_COOLDOWN_MS_CHASSEUR
-    : GAME_CONSTANTS.MOVE_COOLDOWN_MS_CHASSE;
-}
-
-===== FILE: sidebar.component.html (362 bytes) | generated 2025-10-16 01:44:35.681 UTC =====
+===== FILE: sidebar.component.html (362 bytes) | generated 2025-10-16 15:22:11.741 UTC =====
 <!-- src/app/pages/play/sidebar.component.html -->
 <div class="players" *ngIf="players$ | async as players">
   <div class="player" *ngFor="let p of players">
@@ -1693,7 +1828,7 @@ function moveCooldownMs(ctx: PlayCtx) {
   </div>
 </div>
 
-===== FILE: ui\mobile-dpad.component.ts (3287 bytes) | generated 2025-10-16 01:44:35.682 UTC =====
+===== FILE: ui\mobile-dpad.component.ts (3287 bytes) | generated 2025-10-16 15:22:11.742 UTC =====
 import { Component, EventEmitter, Output, Input, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
@@ -1806,7 +1941,7 @@ export class MobileDpadComponent {
 
 }
 
-===== FILE: ui\scoreboard-overlay\scoreboard-adapter.service.ts (5191 bytes) | generated 2025-10-16 01:44:35.683 UTC =====
+===== FILE: ui\scoreboard-overlay\scoreboard-adapter.service.ts (5191 bytes) | generated 2025-10-16 15:22:11.743 UTC =====
 import { Injectable, inject } from '@angular/core';
 import { Auth, authState } from '@angular/fire/auth';
 import {
@@ -1964,7 +2099,7 @@ export class ScoreboardAdapterService {
   }
 }
 
-===== FILE: ui\scoreboard-overlay\scoreboard-overlay.component.html (1694 bytes) | generated 2025-10-16 01:44:35.684 UTC =====
+===== FILE: ui\scoreboard-overlay\scoreboard-overlay.component.html (1694 bytes) | generated 2025-10-16 15:22:11.744 UTC =====
 <div class="sb-container">
   <div class="sb-card">
     <!-- Header compact -->
@@ -2016,7 +2151,7 @@ export class ScoreboardAdapterService {
   </div>
 </div>
 
-===== FILE: ui\scoreboard-overlay\scoreboard-overlay.component.scss (2323 bytes) | generated 2025-10-16 01:44:35.685 UTC =====
+===== FILE: ui\scoreboard-overlay\scoreboard-overlay.component.scss (2323 bytes) | generated 2025-10-16 15:22:11.745 UTC =====
 .sb-container {
   position: fixed;
   top: 0.75rem;
@@ -2118,7 +2253,7 @@ export class ScoreboardAdapterService {
   100% { opacity: 0; transform: translateY(-8px); }
 }
 
-===== FILE: ui\scoreboard-overlay\scoreboard-overlay.component.ts (1133 bytes) | generated 2025-10-16 01:44:35.686 UTC =====
+===== FILE: ui\scoreboard-overlay\scoreboard-overlay.component.ts (1133 bytes) | generated 2025-10-16 15:22:11.746 UTC =====
 // src/app/pages/play/ui/scoreboard-overlay/scoreboard-overlay.component.ts
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { AsyncPipe, NgForOf, NgIf } from '@angular/common';
@@ -2153,4 +2288,4 @@ export class ScoreboardOverlayComponent implements OnInit {
   trackByUid = (_: number, p: { uid: string }) => p.uid;
 }
 
-===== DONE (23 files) =====
+===== DONE (32 files) =====

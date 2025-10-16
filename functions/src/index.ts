@@ -101,20 +101,22 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
   const snap = event.data;
   if (!snap) return;
 
-  const data = snap.data() as TagEventData;
+  const data = snap.data() as any; // EventItem-like { type, createdAt, payload: {...} }
   if (data?.type !== "tag/hit") return;
 
-  const roomId = event.params.roomId as string;
-  const hunterUid = data.hunterUid as string | undefined;
-  const victimUid = data.victimUid as string | undefined;
+  const roomId = String(event.params.roomId || "");
+  const hunterUid = data?.payload?.byUid as string | undefined;
+  const victimUid = data?.payload?.targetUid as string | undefined;
+  const tagX = data?.payload?.x as number | undefined;
+  const tagY = data?.payload?.y as number | undefined;
   if (!roomId || !hunterUid || !victimUid) return;
 
-  const isBotVictim = String(victimUid).startsWith("bot-");
+  const isBotVictim = victimUid.startsWith("bot-");
 
   const roomRef = db.doc(`rooms/${roomId}`);
   const eventRef = snap.ref;
 
-  // --- Idempotence : on ne traite qu'une fois cet event ---
+  // Idempotence
   const markerRef = eventRef.collection("_processed").doc("score");
   const claimed = await db.runTransaction(async (tx) => {
     const m = await tx.get(markerRef);
@@ -124,34 +126,28 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
   });
   if (!claimed) return;
 
-  // Lecture room
+  // Lire la room (pour le mode & règles de fin)
   const roomSnap = await roomRef.get();
   const room = (roomSnap.data() || {}) as RoomDoc;
   const modeName = (room.mode ?? "classic") as NonNullable<RoomDoc["mode"]>;
 
-  // --- 1) +1 point au chasseur ---
+  // 1) +1 au chasseur
   const hunterRef = db.doc(`rooms/${roomId}/players/${hunterUid}`);
   await db.runTransaction(async (tx) => {
     const h = await tx.get(hunterRef);
-    if (!h.exists) return; // si pas de doc, on ignore silencieusement
+    if (!h.exists) return;
     tx.update(hunterRef, {
       score: FieldValue.increment(1),
       lastTagMs: Date.now(),
     });
   });
 
-  // --- 2) Si la victime est un BOT : respawn immédiat du bot (déplacement) ---
+  // 2) Respawn si victime = BOT
   if (isBotVictim) {
-    const { x: tagX, y: tagY } = { x: data.x, y: data.y };
-    const { x: rx, y: ry } = pickRespawnSimple(tagX, tagY);
-    // Écrit dans RTDB: bots/{roomId}/{botId} = { x, y, t }
-    await rtdb.ref(`bots/${roomId}/${victimUid}`).update({
-      x: rx,
-      y: ry,
-      t: Date.now(),
-    });
+    const { x: rx, y: ry } = pickRespawnSimple(tagX ?? 0, tagY ?? 0);
+    await rtdb.ref(`bots/${roomId}/${victimUid}`).update({ x: rx, y: ry, t: Date.now() });
   } else {
-    // --- 3) Victime humaine : on laisse les handlers de mode faire leur logique ---
+    // 3) Victime humaine → délèguer au handler du mode
     const playersSnap = await db.collection(`rooms/${roomId}/players`).get();
     const players = new Map<string, PlayerDoc>();
     playersSnap.forEach((d) => players.set(d.id, (d.data() || {}) as PlayerDoc));
@@ -170,7 +166,7 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
     }
   }
 
-  // --- 4) Conditions de fin (inchangées) ---
+  // 4) Conditions de fin (identiques à ta version)
   if (modeName === "classic") {
     const target = room.targetScore ?? 5;
     if (target > 0) {
