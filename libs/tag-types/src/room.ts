@@ -17,7 +17,7 @@ export interface RoomDoc {
   /** Map UID -> role (optionnelle pour alléger l’écriture) */
   roles?: RolesMap;
   /** UID du chasseur courant (peut être null/undefined selon le mode) */
-  hunterUid?: string | null;
+
   roundEndAtMs?: number | null;
   createdAt: FirestoreTimestamp;
   updatedAt: FirestoreTimestamp;

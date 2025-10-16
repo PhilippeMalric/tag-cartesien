@@ -152,7 +152,10 @@ export class PlayRenderer {
     // --- Autres joueurs (gris par défaut, orange si chasseur) ---
    for (const [uid, p] of state.others) {
       // ⚠️ on détermine le chasseur via hunterUid (global), pas via MON rôle
-      const isHunterOther = !!state.hunterUid && uid === state.hunterUid;
+     const role = String((p as any)?.role ?? '').toLowerCase();
+      const isHunterOther = p.ringKind === 'hunter';
+
+      ctx.fillStyle = isHunterOther ? colorHunter : colorOther;
 
       const px = cx + p.x * scale;
       const py = cy - p.y * scale;
@@ -189,7 +192,17 @@ export class PlayRenderer {
     }
 
     // 🟠 tolère EN/FR pour “moi”
-    const amHunter =  state.role === 'hunter';
+    const r = String(state.role ?? '').toLowerCase();
+
+console.log("r",r);
+
+
+    const amHunter =
+      r === 'hunter' || 
+      (Array.isArray((state as any).hunterUids) &&
+      (state as any).meUid &&
+      (state as any).hunterUids.includes((state as any).meUid));
+
 
     // Moi (orange si chasseur, sinon bleu)
     ctx.fillStyle = amHunter ? colorHunter : colorSelf;

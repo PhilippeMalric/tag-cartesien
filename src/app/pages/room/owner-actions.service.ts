@@ -93,6 +93,7 @@ export class OwnerActionsService {
    * - Si target est chassé → on le rend chasseur SI >= 1 autre chassé (humain ou bot) reste.
    * Écrit uniquement la clé touchée: roles.<targetUid>
    */
+  // Multi-chasseurs permis (ne touche pas hunterUid)
   async toggleHunterMulti(
     roomId: string,
     targetUid: string,
@@ -100,47 +101,44 @@ export class OwnerActionsService {
     getAllPlayers: () => Promise<PlayerVM[]>,
     getCurrentRoles: () => Promise<Record<string, RoleFR> | null>
   ): Promise<RoleFR> {
+    // 1) Prépare les données & garde-fous (même logique que ta version)
     const players = this.sanitizePlayers(await getAllPlayers());
     if (!players.length) throw new Error('Aucun joueur');
 
-    // Rôles actuels (FR)
-    const rolesMapFR = { ...(await getCurrentRoles() || {}) } as Record<string, RoleFR>;
+    const rolesMap = { ...(await getCurrentRoles() || {}) } as Record<string, RoleFR>;
+    for (const p of players) if (!rolesMap[p.uid]) rolesMap[p.uid] = 'prey';
 
-    // Par défaut, chaque humain sans entrée reçoit 'prey'
-    for (const p of players) if (!rolesMapFR[p.uid]) rolesMapFR[p.uid] = 'prey';
-
-    // Détermine humains/bots à partir des listes
     const humanUids = new Set(players.map(p => p.uid));
     const isHuman = (uid: string) => humanUids.has(uid);
 
-    // Comptages utiles
-    const countHumanHunters = Object.entries(rolesMapFR)
+    const countHumanHunters = Object.entries(rolesMap)
       .filter(([uid, r]) => isHuman(uid) && r === 'hunter').length;
 
-    const countHumanRunners = Object.entries(rolesMapFR)
+    const countHumanRunners = Object.entries(rolesMap)
       .filter(([uid, r]) => isHuman(uid) && r === 'prey').length;
 
-    const hasBotRunner = Object.entries(rolesMapFR)
+    const hasBotRunner = Object.entries(rolesMap)
       .some(([uid, r]) => !isHuman(uid) && r === 'prey');
 
-    // Rôle cible (toggle, FR)
-    const nextRoleFR: RoleFR = isCurrentlyHunter ? 'prey' : 'hunter';
+    // Rôle cible (toggle)
+    const nextRole: RoleFR = isCurrentlyHunter ? 'prey' : 'hunter';
 
-    // --- GARDE-FOUS ---
-    if (nextRoleFR === 'prey' && isCurrentlyHunter && countHumanHunters <= 1) {
+    // 2) Règles: ≥1 chasseur humain ET ≥1 chassé (humain ou bot) après
+    if (nextRole === 'prey' && isCurrentlyHunter && countHumanHunters <= 1) {
       throw new Error('Il doit rester au moins un chasseur (humain).');
     }
-
-    if (nextRoleFR === 'hunter') {
+    if (nextRole === 'hunter') {
       const humanRunnersAfter = countHumanRunners - (isCurrentlyHunter ? 0 : 1);
-      const thereWillBeAtLeastOneRunner = hasBotRunner || humanRunnersAfter >= 1;
-      if (!thereWillBeAtLeastOneRunner) {
+      if (!hasBotRunner && humanRunnersAfter < 1) {
         throw new Error('Il doit rester au moins un chassé (humain ou bot).');
       }
     }
 
-    // ✅ écrit en Role partagé (EN) pour la clé cible seulement
-    await this.roomSvc.setRole(roomId, targetUid, nextRoleFR);
-    return nextRoleFR;
+    // 3) ✅ Écriture transactionnelle (room + player) SANS mono-chasseur
+    await this.roomSvc.setPlayerRole(roomId, targetUid, nextRole);
+    // ^ cette méthode met à jour rooms.roles[targetUid] et le doc players/<uid> { role, updatedAt, ... } en 1 transaction. :contentReference[oaicite:1]{index=1}
+
+    return nextRole;
   }
+
 }

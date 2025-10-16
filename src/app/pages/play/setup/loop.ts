@@ -81,8 +81,8 @@ export function startGameLoop(ctx: PlayCtx, ls: LocalState) {
       role: ctx.role,
       invulnerableUntil: ctx.invulnerableUntil,
       tagRadius: GAME_CONSTANTS.TAG_RADIUS,
-      hunterUid: ctx.hunterUid,
       hunterIFrameUntilMs: ctx.hunterIFrameUntilMs,
+      hunterUids: ctx.hunterUids,
     });
 
     ls.rafId = requestAnimationFrame(loop);

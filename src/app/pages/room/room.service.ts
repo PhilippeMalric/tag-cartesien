@@ -220,13 +220,9 @@ export class RoomService {
     await this.setHunter(roomId, ownerUid);
   }
 
-  /** Met le rôle d'un joueur (merge dans roles.<uid>) */
   async setRole(roomId: string, uid: string, role: Role): Promise<void> {
-    const roomRef = doc(this.fs, 'rooms', roomId);
-    await updateDoc(roomRef, {
-      [`roles.${uid}`]: role,
-      updatedAt: serverTimestamp(),
-    });
+    // Écrit à la fois dans room.roles et dans le doc player
+    return this.setPlayerRole(roomId, uid, role);
   }
 
   /** Écrit plusieurs rôles d'un coup (merge partiel) */
@@ -237,5 +233,23 @@ export class RoomService {
       payload[`roles.${uid}`] = role;
     }
     await updateDoc(roomRef, payload);
+  }
+
+  async setPlayerRole(roomId: string, uid: string, role: Role): Promise<void> {
+    return runInInjectionContext(this.env, async () => {
+      const now   = serverTimestamp();
+      const batch = writeBatch(this.fs);
+
+      // room.roles.<uid> + updatedAt
+      batch.update(this.roomRef(roomId), {
+        [`roles.${uid}`]: role,
+        updatedAt: now,
+      } as any);
+
+      // players/<uid>.role (merge)
+      batch.set(this.playerRef(roomId, uid), { role, updatedAt: now } as any, { merge: true });
+
+      await batch.commit();
+    });
   }
 }

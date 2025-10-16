@@ -48,7 +48,7 @@ export interface PlayCtx {
 
   // État interne nécessaire au moteur
   roomOwnerUid: string | null;
-  hunterUid: string | null;
+  hunterUids: string[] ;
   me: Pos;
   keys: Set<string>;
   others: Map<string, OtherPos>;

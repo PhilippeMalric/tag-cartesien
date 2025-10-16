@@ -4,7 +4,6 @@ import { FieldValue } from "firebase-admin/firestore";
 
 export type RoomDoc = {
   ownerUid?: string;
-  hunterUid?: string | null;
   roles?: Record<string, string>;
 };
 
@@ -13,7 +12,6 @@ export type RemovePlayerResult = {
   roomId: string;
   uid: string;
   cleanedRoles: boolean;
-  clearedHunter: boolean;
 };
 
 export async function cleanRoomAfterPlayerRemoval(db: Firestore, roomId: string, uid: string) {
@@ -23,15 +21,12 @@ export async function cleanRoomAfterPlayerRemoval(db: Firestore, roomId: string,
 
   const room = (snap.data() || {}) as RoomDoc;
   const roles = room.roles ?? {};
-  const hunterUid = room.hunterUid ?? null;
 
   const updates: Record<string, any> = { updatedAt: FieldValue.serverTimestamp() };
   if (Object.prototype.hasOwnProperty.call(roles, uid)) {
     updates[`roles.${uid}`] = FieldValue.delete();
   }
-  if (hunterUid === uid) {
-    updates["hunterUid"] = null;
-  }
+
 
   if (Object.keys(updates).length > 1) {
     await roomRef.update(updates);
@@ -73,9 +68,7 @@ export async function removePlayerCore(
   if (Object.prototype.hasOwnProperty.call(roles, uid)) {
     updates[`roles.${uid}`] = FieldValue.delete();
   }
-  if (room.hunterUid === uid) {
-    updates["hunterUid"] = null;
-  }
+
 
   const batch = db.batch();
   batch.delete(playerRef);
@@ -86,7 +79,6 @@ export async function removePlayerCore(
     ok: true,
     roomId,
     uid,
-    cleanedRoles: Object.prototype.hasOwnProperty.call(roles, uid),
-    clearedHunter: room.hunterUid === uid,
+    cleanedRoles: Object.prototype.hasOwnProperty.call(roles, uid)
   };
 }

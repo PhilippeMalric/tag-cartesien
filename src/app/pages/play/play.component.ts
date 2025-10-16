@@ -73,7 +73,7 @@ export class PlayComponent implements OnInit, OnDestroy {
   // Exposés au template
   matchId = '';
   uid = '';
-  role = 'hunter' as any;
+  role = 'prey' as any;
   myScore = 0;
   targetScore = 0;
   timeLeft = 0;
@@ -83,7 +83,7 @@ export class PlayComponent implements OnInit, OnDestroy {
 
   // Internes utilisés par le moteur
   roomOwnerUid: string | null = null;
-  hunterUid: string | null = null;
+  hunterUids: string[] = [];
   me: Pos = { x: 0, y: 0 };
   keys = new Set<string>();
   others = new Map<string, Pos>();

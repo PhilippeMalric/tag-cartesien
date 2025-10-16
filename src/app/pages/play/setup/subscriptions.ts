@@ -47,10 +47,8 @@ export function attachSubscriptions(ctx: PlayCtx, ls: LocalState) {
   ls.playersSub = ctx.roomSvc.players$(ctx.matchId).subscribe((players: Player[]) => {
     ls.playersById = Object.fromEntries((players || []).map(p => [p.uid, p]));
     let hunter: any = null;
-    if (ctx.hunterUid) {
-      hunter = players.find((p: any) => p?.uid === ctx.hunterUid || p?.id === ctx.hunterUid) ?? null;
-    }
-    if (!hunter) hunter = players.find((p: any) => p?.role === 'hunter') ?? null;
+    
+    hunter = players.find((p: any) => p?.role === 'hunter') ?? null;
 
     ctx.myScore = hunter?.score ?? 0;
     ctx.cd.markForCheck();
@@ -92,17 +90,24 @@ export function attachSubscriptions(ctx: PlayCtx, ls: LocalState) {
       const mine = roles[ctx.uid] ?? null;
       if (mine && ctx.role !== mine) {
         ctx.role = mine;
+
+        // déjà présent: miroir Firestore player.role
         runInInjectionContext(ctx.env, async () => {
           try {
             const ref = doc(ctx.match.fs, `rooms/${ctx.matchId}/players/${ctx.uid}`);
             await setDoc(ref, { role: mine }, { merge: true });
           } catch {}
         });
+
+        // ⬇️ AJOUT: miroir RTDB positions pour que le canvas voie le bon rôle tout de suite
+        ctx.positions.writeSelf(ctx.matchId, ctx.uid, ctx.me.x, ctx.me.y, ctx.role as string)
+          .catch(() => {});
       }
+
       const chasseurUids = Object.keys(roles).filter((k) => roles[k] === 'hunter');
-      ctx.hunterUid = chasseurUids[0] ?? null;
-      if (chasseurUids.length > 1) console.warn('[setupPlay] Plusieurs "hunter":', chasseurUids);
+      // (log éventuel inchangé)
     }
+
 
     const endMs = room.roundEndAtMs as number | undefined;
     if (endMs) {
@@ -183,6 +188,15 @@ export function attachSubscriptions(ctx: PlayCtx, ls: LocalState) {
   ctx.positions.startListening(ctx.matchId);
 
   ls.positionsSub = ctx.positions.positions$.subscribe((map) => {
+    
+  const hunters: string[] = [];
+  for (const [id, p] of Object.entries(map)) {
+    const r = String(p?.role ?? '').toLowerCase();
+    if (r === 'hunter' || r === 'chasseur') hunters.push(id);
+  }
+  ctx.hunterUids = Array.from(new Set(hunters));
+
+
     ctx.debug.posUids = Object.keys(map || {});
     ctx.others.clear();
 
@@ -212,6 +226,7 @@ export function attachSubscriptions(ctx: PlayCtx, ls: LocalState) {
         x: pos.x,
         y: pos.y,
         iFrameUntilMs: ringEpoch && ringEpoch > Date.now() ? ringEpoch : undefined,
+        ringKind: pl ? (pl.role === 'hunter' ? 'hunter' : 'prey') : 'prey',
       });
     }
 

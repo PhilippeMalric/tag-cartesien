@@ -8,7 +8,7 @@ export type OtherPos = Pos & {
   /** Deadline epoch (ms) pour dessiner l’anneau */
   iFrameUntilMs?: number;
   /** (Optionnel) Type d’anneau pour styler différemment si besoin */
-  ringKind?: 'victim' | 'hunter';
+  ringKind?: 'prey' | 'hunter';
 };
 
 
@@ -34,9 +34,11 @@ export interface RenderState {
   tagRadius: number;
   /** Deadline perf.now() (ms) pour l’anneau du joueur local */
   invulnerableUntil: number;
-  hunterUid: string | null;
+
   /** (Optionnel) feedback local temporaire, si tu le conserves */
   hunterIFrameUntilMs?: number;
+
+  hunterUids: string[];
 }
 
 export const PLAY_COLORS = {
