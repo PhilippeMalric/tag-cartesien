@@ -6,7 +6,7 @@
   @if (isOwner$ | async) {
 
     <!-- Choix du mode -->
-    <div class="mode-group">
+    <!-- <div class="mode-group">
       <span class="mode-label">Mode</span>
       <mat-select
         [value]="mode"
@@ -16,39 +16,32 @@
         <mat-option value="infection">infection</mat-option>
         <mat-option value="transmission">transmission</mat-option>
       </mat-select>
-    </div>
+    </div> -->
 
-    <!-- Tirage chasseur -->
-    <div class="owner-actions">
-      <button
-        mat-stroked-button
-        color="accent"
-        class="btn-pick"
-        [disabled]="pickingHunter"
-        [matMenuTriggerFor]="pickMenu"
-        aria-label="Choisir le chasseur">
-        <mat-icon fontSet="material-symbols-outlined">shuffle</mat-icon>
-        <span>Tirer le chasseur</span>
-        @if (pickingHunter) { <mat-progress-spinner mode="indeterminate" diameter="16"></mat-progress-spinner> }
-      </button>
+ 
+  <!-- Tirage chasseur -->
+  <div class="owner-actions">
 
-      <!-- Résultat visible -->
-      @if (lastPickedHunter) {
-        <span class="chip result-chip" aria-live="polite">
-          Chasseur : {{ lastPickedHunter.displayName || lastPickedHunter.uid }}
-        </span>
-      }
+    <!-- Terminer -->
+    <button
+      mat-stroked-button
+      color="warn"
+      (click)="endNow()">
+      <mat-icon fontSet="material-symbols-outlined">flag</mat-icon>
+      Terminer
+    </button>
 
-      <!-- Terminer -->
-      <button
-        mat-stroked-button
-        color="warn"
-        (click)="endNow()">
-        <mat-icon fontSet="material-symbols-outlined">flag</mat-icon>
-        Terminer
-      </button>
-    </div>
-
+    <!-- ✅ Nouveau : Ajouter un bot (owner seulement) -->
+    <button
+      mat-stroked-button
+      color="primary"
+      class="ml-2"
+      (click)="addBot()"
+      matTooltip="Ajouter un bot (rôle : chassé)">
+      <mat-icon fontSet="material-symbols-outlined" class="mr-1">smart_toy</mat-icon>
+      Ajouter un bot
+    </button>
+  </div>
     <!-- Menu pour choisir l’ensemble des candidats -->
     <mat-menu #pickMenu="matMenu" xPosition="before">
       <button mat-menu-item (click)="pickHunter('all')">
@@ -92,7 +85,8 @@
     <mat-card-title>Joueurs</mat-card-title>
     <mat-card-content>
       <mat-list>
-        @for (p of (playersVM$ | async); track trackByUid) {
+        @for (p of (playersVM$ | async); track p.uid) {
+         
           <mat-list-item>
             <mat-icon matListItemIcon fontSet="material-symbols-outlined">person</mat-icon>
 

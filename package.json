@@ -9,7 +9,6 @@
     "build": "ng build",
     "build:prod": "ng build --configuration production",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test",
 
     "serve:ssr:tag-cartesien": "node dist/tag-cartesien/server/server.mjs",
     "build:ssr": "ng build && ng run tag-cartesien:server",

@@ -333,4 +333,51 @@ export class RoomFacade {
   // Entrées numériques directes
   onInputX(v: string) { const n = Number(v); if (Number.isFinite(n)) this.spawn.setX(n); }
   onInputY(v: string) { const n = Number(v); if (Number.isFinite(n)) this.spawn.setY(n); }
+
+
+  /** Toggle le rôle du joueur ciblé.
+   *  - Si `isCurrentlyHunter` ⇒ passe en 'prey' (peut laisser 0 chasseur).
+   *  - Sinon ⇒ définit CE joueur 'hunter' et met tous les autres humains en 'prey'.
+   *  Retourne le nouveau rôle appliqué au joueur.
+   */
+  async toggleHunter(targetUid: string, isCurrentlyHunter: boolean): Promise<Role> {
+    if (!this._roomId) throw new Error('Room non initialisée');
+
+    // Récupère la room courante (pour les rôles actuels) et la liste des joueurs humains
+    const [room, players] = await Promise.all([
+      firstValueFrom(this.room$.pipe(take(1))),
+      firstValueFrom(this.players$.pipe(take(1))),
+    ]);
+    if (!room) throw new Error('Room introuvable');
+
+    // UIDs humains uniquement (on ignore les bots: uid "bot-*")
+    const humanUids = (players ?? [])
+      .map(p => p.uid)
+      .filter(uid => !!uid && !String(uid).startsWith('bot-'));
+
+    if (!humanUids.includes(targetUid)) {
+      throw new Error('Joueur cible introuvable (ou est un bot).');
+    }
+
+    const nextRoles: Record<string, Role> = {};
+
+    if (isCurrentlyHunter) {
+      // ➜ on rend la cible 'prey' (les autres conservent leur statut actuel s'il existe)
+      for (const uid of humanUids) {
+        if (uid === targetUid) { nextRoles[uid] = 'prey'; continue; }
+        const current = (room.roles as Record<string, Role> | undefined)?.[uid];
+        nextRoles[uid] = (current === 'hunter' || current === 'prey') ? current : 'prey';
+      }
+    } else {
+      // ➜ on force un seul chasseur: la cible 'hunter', les autres 'prey'
+      for (const uid of humanUids) {
+        nextRoles[uid] = (uid === targetUid) ? 'hunter' : 'prey';
+      }
+    }
+
+    await this.roomSvc.applyRoles(this._roomId, nextRoles);
+    this.log(`Owner: toggle hunter → ${targetUid} = ${nextRoles[targetUid]}`);
+    return nextRoles[targetUid];
+  }
+
 }

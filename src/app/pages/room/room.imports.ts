@@ -59,6 +59,7 @@ export const MAT = [
   MatSelectModule,
   MatDividerModule,
   MatProgressSpinnerModule,
+  
 ] as const;
 
 // --- Firebase Auth (valeurs) ---

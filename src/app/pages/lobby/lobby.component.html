@@ -5,11 +5,6 @@
   <button mat-icon-button matTooltip="Rafraîchir" (click)="refresh()">
     <mat-icon fontSet="material-symbols-outlined">refresh</mat-icon>
   </button>
-  @if (showDevCleanup) {
-    <button mat-stroked-button color="warn" (click)="cleanLobby()" [disabled]="cleaning()">
-      @if (cleaning()) { Nettoyage… } @else { Nettoyer anciens lobbys }
-    </button>
-  }
 </mat-toolbar>
 
 <div class="lobby-grid">
@@ -42,7 +37,8 @@
             <button
               mat-icon-button
               matSuffix
-              (click)="commitName()"
+              (click)="commitName()
+              "
               [disabled]="nameCtrl.invalid"
               aria-label="Enregistrer">
               <mat-icon fontSet="material-symbols-outlined">check</mat-icon>
@@ -61,11 +57,11 @@
   <mat-card class="create-card">
     <mat-card-header>
       <mat-card-title>Créer une salle</mat-card-title>
-      <mat-card-subtitle>Choisis un mode puis démarre</mat-card-subtitle>
+      <!-- <mat-card-subtitle>Choisis un mode puis démarre</mat-card-subtitle> -->
     </mat-card-header>
 
     <mat-card-content>
-      <div class="row mode-picker" aria-label="Choix du mode">
+      <!--    <div class="row mode-picker" aria-label="Choix du mode">
         <mat-chip-set>
           <mat-chip-option
             [selected]="facade.mode === 'classic'"
@@ -79,17 +75,16 @@
             transmission
           </mat-chip-option>
 
-          <!-- Garde celle-ci seulement si GameMode inclut 'infection' -->
           <mat-chip-option
             [selected]="facade.mode === 'infection'"
             (click)="facade.mode = 'infection'">
             infection
           </mat-chip-option>
         </mat-chip-set>
-      </div>
+      </div> -->
 
       @if (facade.mode === 'classic') {
-        <div class="row">
+        <div class="row" style="margin-top: 10px;">
           <mat-form-field class="fx1" appearance="outline">
             <mat-label>Score cible</mat-label>
             <input matInput type="number" min="1" [ngModel]="facade.targetScore"
@@ -145,6 +140,7 @@
               @for (r of rooms; track r.id) {
                 <mat-list-item class="room-item" (click)="join(r)" matRipple
                                aria-label="Rejoindre la room {{ r.id }}">
+
                   <!-- Titre -->
                   <div matListItemTitle class="room-title">
                     <span class="room-id">#{{ r.id }}</span>
@@ -172,7 +168,6 @@
                     <span class="dot">•</span>
                     <!-- Mode -->
                     <span class="mode chip">{{ r.mode }}</span>
-
 
                     <span class="dot">•</span>
                     <!-- Date relative -->

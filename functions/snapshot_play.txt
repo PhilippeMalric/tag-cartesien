@@ -1,7 +1,8 @@
 
-===== FILE: bot.service.ts (2731 bytes) | generated 2025-10-16 15:22:11.713 UTC =====
+===== FILE: bot.service.ts (7847 bytes) | generated 2025-10-23 19:13:26.156 UTC =====
+// src/app/pages/play/bot.service.ts
 import { Injectable, inject } from '@angular/core';
-import { Database, ref, set, onDisconnect } from '@angular/fire/database';
+import { Database, ref, set, onDisconnect, onValue, update } from '@angular/fire/database';
 
 export type BotState = {
   id: string;
@@ -12,13 +13,42 @@ export type BotState = {
 function rnd(min: number, max: number) { return Math.random() * (max - min) + min; }
 function clamp(v: number, a: number, b: number) { return Math.max(a, Math.min(b, v)); }
 
+function pickRespawnNear(nx?: number, ny?: number) {
+  const WORLD = { minX: -50, maxX: 50, minY: -50, maxY: 50 };
+  const rrnd = (a: number, b: number) => Math.floor(Math.random() * (b - a + 1)) + a;
+  let x = rrnd(WORLD.minX, WORLD.maxX);
+  let y = rrnd(WORLD.minY, WORLD.maxY);
+  if (Number.isFinite(nx) && Number.isFinite(ny)) {
+    const dx = x - (nx as number);
+    const dy = y - (ny as number);
+    if (Math.hypot(dx, dy) < 5) {
+      x = Math.max(WORLD.minX, Math.min(WORLD.maxX, x + 7));
+      y = Math.max(WORLD.minY, Math.min(WORLD.maxY, y + 7));
+    }
+  }
+  return { x, y };
+}
+
 @Injectable({ providedIn: 'root' })
 export class BotService {
   private db = inject(Database);
-  private timers = new Map<string, any>(); // key: `${matchId}:${botId}`
-  private states = new Map<string, BotState>();
 
-  /** Crée N bots et démarre leur mouvement (owner uniquement) */
+  /** key: `${matchId}:${rtdbBotKey}` → setInterval handle */
+  private timers = new Map<string, any>();
+  /** key: `${matchId}:${rtdbBotKey}` → état local */
+  private states = new Map<string, BotState>();
+  /** matches déjà “adoptés” (évite de doubler les listeners) */
+  private adoptedMatches = new Set<string>();
+
+  // ===============================
+  // Public API
+  // ===============================
+
+  /**
+   * Crée N bots et démarre leur mouvement (appelé par l'owner).
+   * RTDB payload conforme aux règles: { x, y, t, name }
+   * ⚠️ Ici on crée des clés RTDB *avec* préfixe 'bot-' (cohérent avec le uid Firestore).
+   */
   spawn(matchId: string, count = 3) {
     for (let i = 0; i < count; i++) {
       const botId = `bot-${Math.random().toString(36).slice(2, 7)}`;
@@ -26,58 +56,169 @@ export class BotService {
         id: botId,
         x: rnd(-40, 40),
         y: rnd(-40, 40),
-        vx: rnd(-1, 1), vy: rnd(-1, 1),
+        vx: rnd(-1, 1),
+        vy: rnd(-1, 1),
       };
-      const norm = Math.hypot(st.vx, st.vy) || 1; st.vx /= norm; st.vy /= norm;
-      this.states.set(`${matchId}:${botId}`, st);
+      this.normalizeDir(st);
 
-      // On crée le nœud bot
+      const stateKey = this.key(matchId, botId);
+      this.states.set(stateKey, st);
+
+      // Crée le nœud bot (RTDB strict)
       const r = ref(this.db, `bots/${matchId}/${botId}`);
-      set(r, { x: st.x, y: st.y, t: Date.now(), name: 'Bot' }).catch(()=>{});
-      try { onDisconnect(r).remove(); } catch {}
+      set(r, { x: st.x, y: st.y, t: Date.now(), name: 'Bot' }).catch(() => {});
+      try { onDisconnect(r).remove(); } catch { /* no-op */ }
 
-      // Boucle de mouvement (100 ms)
-      const h = setInterval(() => {
-        this.step(matchId, botId);
-      }, 100);
-      this.timers.set(`${matchId}:${botId}`, h);
+      // Boucle de mouvement
+      const h = setInterval(() => this.step(matchId, botId), 100);
+      this.timers.set(stateKey, h);
     }
+  }
+
+  /**
+   * Adopte tous les bots déjà présents sous /bots/{matchId} et les anime.
+   * À appeler côté OWNER quand il entre dans la partie.
+   * ⚠️ Ici les clés RTDB peuvent être 'pushKey' (sans 'bot-') si créés depuis l’écran Room.
+   */
+  adoptExistingBots(matchId: string) {
+    if (!matchId || this.adoptedMatches.has(matchId)) return;
+    this.adoptedMatches.add(matchId);
+
+    const botsRef = ref(this.db, `bots/${matchId}`);
+    onValue(botsRef, (snap) => {
+      const val = (snap.val() ?? {}) as Record<string, any>;
+
+      // Démarrer un timer pour chaque bot manquant
+      for (const [rtdbBotKey, b] of Object.entries(val)) {
+        const stateKey = this.key(matchId, rtdbBotKey);
+        if (this.timers.has(stateKey)) continue;
+
+        const st: BotState = {
+          id: rtdbBotKey,
+          x: (typeof b?.x === 'number') ? b.x : rnd(-40, 40),
+          y: (typeof b?.y === 'number') ? b.y : rnd(-40, 40),
+          vx: rnd(-1, 1),
+          vy: rnd(-1, 1),
+        };
+        this.normalizeDir(st);
+        this.states.set(stateKey, st);
+
+        const h = setInterval(() => this.step(matchId, rtdbBotKey), 100);
+        this.timers.set(stateKey, h);
+      }
+
+      // Nettoyer timers/states des bots supprimés côté RTDB
+      for (const stateKey of Array.from(this.timers.keys())) {
+        if (!stateKey.startsWith(matchId + ':')) continue;
+        const rtdbBotKey = stateKey.split(':')[1];
+        if (!val[rtdbBotKey]) {
+          clearInterval(this.timers.get(stateKey));
+          this.timers.delete(stateKey);
+          this.states.delete(stateKey);
+        }
+      }
+    });
   }
 
   /** Stoppe tous les bots de ce match (owner) */
   stopAll(matchId: string) {
-    for (const key of Array.from(this.timers.keys())) {
-      if (!key.startsWith(matchId + ':')) continue;
-      clearInterval(this.timers.get(key));
-      this.timers.delete(key);
-      const botId = key.split(':')[1];
-      set(ref(this.db, `bots/${matchId}/${botId}`), null).catch(()=>{});
-      this.states.delete(key);
+    for (const stateKey of Array.from(this.timers.keys())) {
+      if (!stateKey.startsWith(matchId + ':')) continue;
+      clearInterval(this.timers.get(stateKey));
+      this.timers.delete(stateKey);
+      const rtdbBotKey = stateKey.split(':')[1];
+      set(ref(this.db, `bots/${matchId}/${rtdbBotKey}`), null).catch(() => {});
+      this.states.delete(stateKey);
     }
   }
 
-  private step(matchId: string, botId: string) {
-    const key = `${matchId}:${botId}`;
-    const st = this.states.get(key);
+  /**
+   * Téléporte un bot à une position aléatoire (owner-only depuis l’appelant).
+   * Gère la résolution de clé RTDB ('bot-xxx' vs 'xxx') et met à jour l'état local
+   * pour éviter que la boucle de mouvement "ramène" l'ancienne position.
+   */
+  async teleportToRandom(matchId: string, botId: string, nearX?: number, nearY?: number) {
+    const { x, y } = pickRespawnNear(nearX, nearY);
+    const { rtdbKey, stateKey } = this.resolveKeys(matchId, botId);
+
+    // 1) MAJ état local si on anime ce bot (évite le rubberband)
+    const st = this.states.get(stateKey);
+    if (st) {
+      st.x = x; st.y = y;
+      this.states.set(stateKey, st);
+    }
+
+    // 2) RTDB: update pour ne pas écraser d'autres champs (random/name/role)
+    await update(ref(this.db, `bots/${matchId}/${rtdbKey}`), {
+      x, y,
+      t: Date.now(),
+      // name: 'Bot', // optionnel; tes règles l'autorisent si tu veux le poser
+    });
+  }
+
+  // ===============================
+  // Internal
+  // ===============================
+
+  private step(matchId: string, botIdOrRtdbKey: string) {
+    const stateKey = this.key(matchId, botIdOrRtdbKey);
+    const st = this.states.get(stateKey);
     if (!st) return;
 
-    // Petite errance + demi-tour aux bords
+    // errance légère + rebonds aux bords
     if (Math.random() < 0.15) {
       st.vx += rnd(-0.5, 0.5);
       st.vy += rnd(-0.5, 0.5);
-      const n = Math.hypot(st.vx, st.vy) || 1; st.vx /= n; st.vy /= n;
+      this.normalizeDir(st);
     }
-    const SPEED = 1.5; // unités par tick
+
+    const SPEED = 1.5; // unités par tick (≈100 ms)
     st.x = clamp(st.x + st.vx * SPEED, -50, 50);
     st.y = clamp(st.y + st.vy * SPEED, -50, 50);
     if (Math.abs(st.x) >= 50) st.vx *= -1;
     if (Math.abs(st.y) >= 50) st.vy *= -1;
 
-    set(ref(this.db, `bots/${matchId}/${botId}`), { x: st.x, y: st.y, t: Date.now(), name: 'Bot' }).catch(()=>{});
+    // RTDB payload conforme aux règles (x, y, t, name)
+    set(ref(this.db, `bots/${matchId}/${botIdOrRtdbKey}`), {
+      x: st.x,
+      y: st.y,
+      t: Date.now(),
+      name: 'Bot',
+    }).catch(() => {});
+  }
+
+  private key(matchId: string, rtdbBotKey: string) {
+    return `${matchId}:${rtdbBotKey}`;
+  }
+
+  private normalizeDir(st: BotState) {
+    const n = Math.hypot(st.vx, st.vy) || 1;
+    st.vx /= n;
+    st.vy /= n;
+  }
+
+  /**
+   * Résout la *vraie* clé RTDB pour un `botId` qui peut être "bot-xxx" (uid FS)
+   * ou "xxx" (pushKey RTDB), et renvoie aussi la clé d'état locale.
+   */
+  private resolveKeys(matchId: string, botId: string): { rtdbKey: string; stateKey: string } {
+    // 1) Essayer tel quel
+    const k1 = this.key(matchId, botId);
+    if (this.states.has(k1) || this.timers.has(k1)) {
+      return { rtdbKey: botId, stateKey: k1 };
+    }
+    // 2) Essayer sans 'bot-'
+    const stripped = botId.replace(/^bot-/, '');
+    const k2 = this.key(matchId, stripped);
+    if (this.states.has(k2) || this.timers.has(k2)) {
+      return { rtdbKey: stripped, stateKey: k2 };
+    }
+    // 3) Fallback: par convention, côté RTDB on privilégie la clé "stripped" si l'id commence par 'bot-'
+    return { rtdbKey: botId.startsWith('bot-') ? stripped : botId, stateKey: k2 };
   }
 }
 
-===== FILE: index.ts (250 bytes) | generated 2025-10-16 15:22:11.716 UTC =====
+===== FILE: index.ts (250 bytes) | generated 2025-10-23 19:13:26.158 UTC =====
 export * from './play.models';
 export * from './positions.service';
 export * from './match.service';
@@ -86,7 +227,7 @@ export * from './play.renderer';
 export * from './play.setup';
 export * from './play.helpers'; // ← nouveau
 
-===== FILE: match.service.ts (6946 bytes) | generated 2025-10-16 15:22:11.717 UTC =====
+===== FILE: match.service.ts (6946 bytes) | generated 2025-10-23 19:13:26.159 UTC =====
 import { Injectable, inject } from '@angular/core';
 import { authState, Auth as FirebaseAuth } from '@angular/fire/auth';
 import {
@@ -290,7 +431,7 @@ events$ = (matchId: string): Observable<EventItem[]> => {
 
 }
 
-===== FILE: play.component.html (2488 bytes) | generated 2025-10-16 15:22:11.718 UTC =====
+===== FILE: play.component.html (2488 bytes) | generated 2025-10-23 19:13:26.161 UTC =====
 
 <!-- Toolbar Material -->
 <mat-toolbar color="primary">
@@ -359,7 +500,7 @@ events$ = (matchId: string): Observable<EventItem[]> => {
   pos.uids: {{debug.posUids.join(',') || '∅'}}
 </div> -->
 
-===== FILE: play.component.scss (4753 bytes) | generated 2025-10-16 15:22:11.719 UTC =====
+===== FILE: play.component.scss (4753 bytes) | generated 2025-10-23 19:13:26.162 UTC =====
 .page {
   max-width: 960px;
   margin: 12px auto;
@@ -566,7 +707,7 @@ html.dark {
   --canvas-bg: #0b0d10;
 }
 
-===== FILE: play.component.ts (7112 bytes) | generated 2025-10-16 15:22:11.721 UTC =====
+===== FILE: play.component.ts (8046 bytes) | generated 2025-10-23 19:13:26.163 UTC =====
 import {
   Component, ElementRef, ViewChild, inject,
   OnInit, OnDestroy, ChangeDetectionStrategy,
@@ -591,7 +732,7 @@ import { PositionsService } from './positions.service';
 import { RoomService } from '../room/room.service';
 import { BotService } from './bot.service';
 import { PlayRenderer } from './play.renderer';
-import { Pos } from './play.models';
+import { Pos, OtherPos } from './play.models';
 import { setupPlay } from './play.setup';
 import type { RecentTag } from './play.types';
 import { ScoreboardOverlayComponent } from './ui/scoreboard-overlay/scoreboard-overlay.component';
@@ -602,6 +743,8 @@ import { SpawnCoordService } from '../../services/spawn-coord.service';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatchService } from './match.service';
 import { Database } from '@angular/fire/database';
+import { Subscription } from 'rxjs';
+import type { Role } from '@tag/types';
 
 @Component({
   selector: 'app-play',
@@ -628,11 +771,12 @@ export class PlayComponent implements OnInit, OnDestroy {
   readonly cd = inject(ChangeDetectorRef);
   readonly env = inject(EnvironmentInjector);
   readonly zone = inject(NgZone);
- readonly rtdb = inject(Database);
+  readonly rtdb = inject(Database);
   readonly positions = inject(PositionsService);
   readonly match = inject(MatchService);
   readonly roomSvc = inject(RoomService);
   readonly bots = inject(BotService);
+
   // Canvas renderer
   readonly renderer = new PlayRenderer();
 
@@ -642,7 +786,7 @@ export class PlayComponent implements OnInit, OnDestroy {
   // Exposés au template
   matchId = '';
   uid = '';
-  role = 'prey' as any;
+  role: Role = 'prey';           // ✅ aligne PlayCtx.role
   myScore = 0;
   targetScore = 0;
   timeLeft = 0;
@@ -655,16 +799,19 @@ export class PlayComponent implements OnInit, OnDestroy {
   hunterUids: string[] = [];
   me: Pos = { x: 0, y: 0 };
   keys = new Set<string>();
-  others = new Map<string, Pos>();
+  others = new Map<string, OtherPos>();   // ✅ aligne PlayCtx.others
   lastMoveAt = 0;
   lastTagMs = 0;
   invulnerableUntil = 0;
 
   // Option auto-bots (?bots=N)
   desiredBots = 0;
-  sub: any;
 
-roomMode: 'classic'|'transmission' = 'classic';
+  // Flags & subscriptions
+  sub!: Subscription;            // ✅ public + typé (aligne PlayCtx.sub)
+  roomMode: 'classic'|'transmission' = 'classic';
+  private adoptedOnce = false;
+  private autoSpawnDone = false;
 
   // Getters utilisés par le template
   get showRecentTag(): boolean { return !!this.recentTag && this.recentTag.until > Date.now(); }
@@ -672,13 +819,13 @@ roomMode: 'classic'|'transmission' = 'classic';
 
   private dispose: (() => void) | null = null;
 
- readonly showScoreboard = signal<boolean>(false);
+  readonly showScoreboard = signal<boolean>(false);
 
   ngOnInit(): void {
+    const saved = localStorage.getItem('showScoreboard');
+    if (saved === '1') this.showScoreboard.set(true);
+    window.addEventListener('keydown', this._onKey);
 
-   const saved = localStorage.getItem('showScoreboard');
-  if (saved === '1') this.showScoreboard.set(true);
-  window.addEventListener('keydown', this._onKey);
     // Route / matchId / uid initial
     this.matchId = this.route.snapshot.paramMap.get('matchId')
                 || this.route.snapshot.paramMap.get('id') || '';
@@ -686,38 +833,52 @@ roomMode: 'classic'|'transmission' = 'classic';
     this.debug.uid = this.uid;
     this.debug.match = this.matchId;
 
-    // Lire ?bots=N
+    // Lire ?bots=N (optionnel)
     const n = parseInt(new URLSearchParams(location.search).get('bots') || '', 10);
     this.desiredBots = Number.isFinite(n) && n > 0 ? Math.min(n, 12) : 0;
 
-    // (Optionnel) on initialise "me" avec le point de spawn choisi dans la room.
-    // Le setupPlay peut décider d'utiliser ce point si tu l’as câblé côté setup.
+    // Initialiser "me" avec le point de spawn choisi dans la room (si branché)
     const s = this.spawnSvc.xy();
     this.me = { x: s.x, y: s.y };
 
-    // Démarre la logique runtime (auth+bootstrap+loop+subs)
-    
-
+    // Abonnement room → maj owner / mode / score cible
     this.sub = this.match.room$(this.matchId).subscribe((room: any) => {
       if (!room) return;
-      this.roomMode = (room.mode ?? 'classic');
-      this.targetScore = room.targetScore ?? 0;
+      this.roomMode     = (room.mode ?? 'classic');
+      this.targetScore  = room.targetScore ?? 0;
+      this.roomOwnerUid = room.ownerUid ?? null;
+
+      // Il n’y a qu’un owner : on n’adopte et n’auto-spawn que si JE suis l’owner.
+      if (this.isOwnerNow) {
+        // Adopte les bots déjà présents (créés depuis la Room) une seule fois
+        if (!this.adoptedOnce) {
+          this.bots.adoptExistingBots(this.matchId);
+          this.adoptedOnce = true;
+        }
+        // Auto-spawn via ?bots=N (une seule fois)
+        if (!this.autoSpawnDone && this.desiredBots > 0) {
+          this.bots.spawn(this.matchId, this.desiredBots);
+          this.autoSpawnDone = true;
+        }
+      }
+
       this.cd.markForCheck();
     });
-this.dispose = setupPlay(this);
+
+    // Démarre la logique runtime (auth+bootstrap+loop+subs) — PlayCtx attendu
+    this.dispose = setupPlay(this);   // ✅ maintenant assignable à PlayCtx
   }
 
   exitToLobby(): void {
-      try {
-        // (optionnel) nettoyages avant de quitter la partie :
-        // this.matchService.leaveCurrentMatch();   // si tu as une méthode maison
-        // this.positionsService.teardown();        // arrêter listeners/loops si besoin
-
-      } finally {
-        this.router.navigateByUrl('/lobby');
-      }
+    try {
+      // (optionnel) nettoyages avant de quitter la partie
+      // this.match.leaveCurrentMatch?.();
+      // this.positions.teardown?.();
+    } finally {
+      this.router.navigateByUrl('/lobby');
     }
-  
+  }
+
   // Contrôles bots (utilisés par les boutons de la toolbar)
   spawnBots(n = 3) { if (this.isOwnerNow) this.bots.spawn(this.matchId, n); }
   stopBots() { if (this.isOwnerNow) this.bots.stopAll(this.matchId); }
@@ -744,8 +905,8 @@ this.dispose = setupPlay(this);
 
   ngOnDestroy(): void {
     try { this.dispose?.(); } finally { this.dispose = null; }
-      window.removeEventListener('keydown', this._onKey);
-
+    try { this.sub?.unsubscribe(); } catch {}
+    window.removeEventListener('keydown', this._onKey);
   }
 
   private _onKey = (e: KeyboardEvent) => {
@@ -761,10 +922,9 @@ this.dispose = setupPlay(this);
     this.showScoreboard.set(v);
     localStorage.setItem('showScoreboard', v ? '1' : '0');
   }
-
 }
 
-===== FILE: play.helpers.ts (1201 bytes) | generated 2025-10-16 15:22:11.722 UTC =====
+===== FILE: play.helpers.ts (1201 bytes) | generated 2025-10-23 19:13:26.164 UTC =====
 import { GAME_CONSTANTS } from './play.models';
 import type { PlayCtx } from './play.types';
 
@@ -798,7 +958,7 @@ export function findVictimWithinRadius(ctx: PlayCtx): { uid: string; dist: numbe
   return best;
 }
 
-===== FILE: play.models.ts (2199 bytes) | generated 2025-10-16 15:22:11.723 UTC =====
+===== FILE: play.models.ts (2199 bytes) | generated 2025-10-23 19:13:26.165 UTC =====
 
 
 // Position de base (x, y)
@@ -870,7 +1030,7 @@ export type MyPlayerDoc = PlayerDoc & {
 export type TagEvent = EventItem; // si des imports existants l’attendent encore
 export type PlayerRole = Role;    // alias pratique pour l’UI si tu l’utilisais
 
-===== FILE: play.renderer.ts (8586 bytes) | generated 2025-10-16 15:22:11.724 UTC =====
+===== FILE: play.renderer.ts (8586 bytes) | generated 2025-10-23 19:13:26.166 UTC =====
 // src/app/pages/play/play.renderer.ts
 import { RenderState } from './play.models';
 
@@ -1093,7 +1253,7 @@ console.log("r",r);
   }
 }
 
-===== FILE: play.setup.ts (1392 bytes) | generated 2025-10-16 15:22:11.726 UTC =====
+===== FILE: play.setup.ts (1392 bytes) | generated 2025-10-23 19:13:26.167 UTC =====
 import { runInInjectionContext } from '@angular/core';
 import type { PlayCtx } from './play.types';
 import { attachKeyboard, detachKeyboard } from './setup/keyboard';
@@ -1141,7 +1301,7 @@ export function setupPlay(ctx: PlayCtx): () => void {
   };
 }
 
-===== FILE: play.types.ts (1878 bytes) | generated 2025-10-16 15:22:11.727 UTC =====
+===== FILE: play.types.ts (1878 bytes) | generated 2025-10-23 19:13:26.168 UTC =====
 import { ElementRef, ChangeDetectorRef, EnvironmentInjector, NgZone } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Auth as FirebaseAuth } from '@angular/fire/auth';
@@ -1209,7 +1369,7 @@ export interface PlayCtx {
   rtdb: Database;
 }
 
-===== FILE: positions.service.ts (3578 bytes) | generated 2025-10-16 15:22:11.728 UTC =====
+===== FILE: positions.service.ts (3578 bytes) | generated 2025-10-23 19:13:26.169 UTC =====
 import { Injectable, inject } from '@angular/core';
 import { Database, ref, set, onValue, off, onDisconnect } from '@angular/fire/database';
 import { BehaviorSubject, combineLatest, Subscription } from 'rxjs';
@@ -1305,7 +1465,7 @@ export class PositionsService {
   }
 }
 
-===== FILE: respawn.util.ts (563 bytes) | generated 2025-10-16 15:22:11.728 UTC =====
+===== FILE: respawn.util.ts (563 bytes) | generated 2025-10-23 19:13:26.171 UTC =====
 import { GAME_CONSTANTS } from './play.models';
 
 export function pickRespawn(hx?: number, hy?: number) {
@@ -1322,7 +1482,7 @@ export function pickRespawn(hx?: number, hy?: number) {
   };
 }
 
-===== FILE: setup\attach.ts (1002 bytes) | generated 2025-10-16 15:22:11.730 UTC =====
+===== FILE: setup\attach.ts (1002 bytes) | generated 2025-10-23 19:13:26.172 UTC =====
 import type { PlayCtx } from '../play.types';
 import { attachBotsListener } from './bots.listener';
 import { attachEventsSub } from './events.sub';
@@ -1358,7 +1518,7 @@ export function attachSubscriptions(ctx: PlayCtx, ls: LocalState) {
   attachPositionsSub(ctx, ls);
 }
 
-===== FILE: setup\bots.listener.ts (1047 bytes) | generated 2025-10-16 15:22:11.731 UTC =====
+===== FILE: setup\bots.listener.ts (1047 bytes) | generated 2025-10-23 19:13:26.173 UTC =====
 import { ref, onValue, off } from '@angular/fire/database';
 import type { PlayCtx } from '../play.types';
 import type { LocalState } from './local-state';
@@ -1388,7 +1548,7 @@ export function attachBotsListener(ctx: PlayCtx, ls: LocalState) {
   (ls as any).stopBots = () => off(botsRef, 'value', botsHandler);
 }
 
-===== FILE: setup\detach.ts (537 bytes) | generated 2025-10-16 15:22:11.732 UTC =====
+===== FILE: setup\detach.ts (537 bytes) | generated 2025-10-23 19:13:26.174 UTC =====
 import type { PlayCtx } from '../play.types';
 import type { LocalState } from './local-state';
 
@@ -1407,13 +1567,15 @@ export function detachSubscriptions(ctx: PlayCtx, ls: LocalState) {
   ls.handledEventIds.clear();
 }
 
-===== FILE: setup\events.sub.ts (2047 bytes) | generated 2025-10-16 15:22:11.733 UTC =====
+===== FILE: setup\events.sub.ts (3104 bytes) | generated 2025-10-23 19:13:26.175 UTC =====
+// src/app/pages/play/setup/events.sub.ts
 import { runInInjectionContext } from '@angular/core';
 import { doc, updateDoc } from '@angular/fire/firestore';
 import type { PlayCtx } from '../play.types';
 import type { LocalState } from './local-state';
 import { pickRespawn } from '../respawn.util';
 import { GAME_CONSTANTS } from '../play.models';
+import { isOwnerNow } from './local-state';
 
 // types @tag/types
 import type { EventItem, TagHitEvent } from '@tag/types';
@@ -1421,48 +1583,70 @@ import { isTagHitEvent } from '@tag/types';
 
 export function attachEventsSub(ctx: PlayCtx, ls: LocalState) {
   ls.eventsSub = ctx.match.events$(ctx.matchId).subscribe((events: EventItem[]) => {
+    if (!Array.isArray(events) || !events.length) return;
+
     for (const ev of events) {
-      // ——— Discrimination par type
-      if (isTagHitEvent(ev)) {
-        const hit = ev as TagHitEvent;
+      // ——— Ne traite que 'tag/hit' avec payload (payload-only comme souhaité)
+      if (!isTagHitEvent(ev) || !ev?.payload) continue;
+      const hit = ev as TagHitEvent;
+      const p = hit.payload;
+      const byUid = p.byUid;
+      const targetUid = p.targetUid;
 
-        // id stable pour éviter doublons
-        const id = hit.id ?? `tag/hit:${hit.payload.byUid}:${hit.payload.targetUid}:${hit.ts}`;
-        if (ls.handledEventIds.has(id)) continue;
-        ls.handledEventIds.add(id);
+      if (!byUid || !targetUid) continue;
 
-        // bandeau
-        ctx.recentTag = {
-          label: `${hit.payload.byUid.slice(0, 6)} a tagué ${hit.payload.targetUid.slice(0, 6)}`,
-          until: Date.now() + 2500,
-        };
+      // id stable pour éviter doublons locaux
+      const id = hit.id ?? `tag/hit:${byUid}:${targetUid}:${hit.ts ?? ''}`;
+      if (ls.handledEventIds.has(id)) continue;
+      ls.handledEventIds.add(id);
 
-        // respawn si JE suis victime (mode classic)
-        if (hit.payload.targetUid === ctx.uid && ls.mode === 'classic') {
-          const { x, y } = pickRespawn(hit.payload.x, hit.payload.y);
-          ctx.me.x = x; ctx.me.y = y;
+      // Bandeau d’info (optionnel)
+      ctx.recentTag = {
+        label: `${byUid.slice(0, 6)} a tagué ${targetUid.slice(0, 6)}`,
+        until: Date.now() + 2500,
+      };
 
-          ctx.invulnerableUntil = performance.now() + GAME_CONSTANTS.INVULN_MS;
-          const untilMs = Date.now() + GAME_CONSTANTS.INVULN_MS;
-
-          runInInjectionContext(ctx.env, async () => {
-            try {
-              const ref = doc(ctx.match.fs, `rooms/${ctx.matchId}/players/${ctx.uid}`);
-              await updateDoc(ref, { iFrameUntilMs: untilMs });
-            } catch {}
-          });
-
-          ctx.positions.writeSelf(ctx.matchId, ctx.uid, x, y, ctx.role as string);
+      // 🟢 Cas 1 — la victime est un BOT → téléportation aléatoire (OWNER uniquement)
+      if (String(targetUid).startsWith('bot-')) {
+        if (isOwnerNow(ctx)) {
+          // ⚠️ IMPORTANT: on laisse BotService calculer le respawn ET
+          //               mettre à jour l'état local pour éviter le "rubberband".
+          //               On lui passe juste la position de tag comme "near".
+          void ctx.bots.teleportToRandom(ctx.matchId, targetUid, p.x, p.y).catch(() => {});
         }
-      } else {
-        // autres types: no-op (extension possible)
+        // Rien d’autre à faire pour les bots
+        continue;
       }
+
+      // 🟠 Cas 2 — JE suis la victime (joueur humain, mode classic) → respawn + iFrame
+      if (targetUid === ctx.uid && ls.mode === 'classic') {
+        const { x, y } = pickRespawn(p.x, p.y);
+        ctx.me.x = x; ctx.me.y = y;
+
+        // iFrame local (UI)
+        ctx.invulnerableUntil = performance.now() + GAME_CONSTANTS.INVULN_MS;
+        const untilMs = Date.now() + GAME_CONSTANTS.INVULN_MS;
+
+        // iFrame persistée pour rendu côté autres clients (FS)
+        runInInjectionContext(ctx.env, async () => {
+          try {
+            const refFs = doc(ctx.match.fs, `rooms/${ctx.matchId}/players/${ctx.uid}`);
+            await updateDoc(refFs, { iFrameUntilMs: untilMs });
+          } catch {}
+        });
+
+        // Position côté RTDB (positions/) pour diffusion
+        ctx.positions.writeSelf(ctx.matchId, ctx.uid, x, y, ctx.role as string);
+      }
+
+      // (Autres victimes humaines) → no-op ici
     }
+
     ctx.cd.markForCheck();
   });
 }
 
-===== FILE: setup\helpers.move-cooldown.ts (277 bytes) | generated 2025-10-16 15:22:11.734 UTC =====
+===== FILE: setup\helpers.move-cooldown.ts (277 bytes) | generated 2025-10-23 19:13:26.176 UTC =====
 import type { PlayCtx } from '../play.types';
 import { GAME_CONSTANTS } from '../play.models';
 
@@ -1472,7 +1656,7 @@ export function moveCooldownMs(ctx: PlayCtx) {
     : GAME_CONSTANTS.MOVE_COOLDOWN_MS_CHASSE;
 }
 
-===== FILE: setup\keyboard.ts (903 bytes) | generated 2025-10-16 15:22:11.735 UTC =====
+===== FILE: setup\keyboard.ts (903 bytes) | generated 2025-10-23 19:13:26.177 UTC =====
 import type { PlayCtx } from '../play.types';
 import { LocalState } from './local-state';
 
@@ -1494,7 +1678,7 @@ export function detachKeyboard(_ls: LocalState) {
   if (up)   window.removeEventListener('keyup', up);
 }
 
-===== FILE: setup\local-state.ts (841 bytes) | generated 2025-10-16 15:22:11.736 UTC =====
+===== FILE: setup\local-state.ts (841 bytes) | generated 2025-10-23 19:13:26.178 UTC =====
 import type { PlayCtx } from '../play.types';
 
 export interface LocalState {
@@ -1528,7 +1712,7 @@ export function isOwnerNow(ctx: PlayCtx) {
   return !!ctx.uid && !!ctx.roomOwnerUid && ctx.uid === ctx.roomOwnerUid;
 }
 
-===== FILE: setup\loop.ts (4159 bytes) | generated 2025-10-16 15:22:11.736 UTC =====
+===== FILE: setup\loop.ts (4159 bytes) | generated 2025-10-23 19:13:26.179 UTC =====
 import { inject, runInInjectionContext } from '@angular/core';
 import type { PlayCtx } from '../play.types';
 import { GAME_CONSTANTS } from '../play.models';
@@ -1641,7 +1825,7 @@ function moveReady(ctx: PlayCtx) {
   return (performance.now() - ctx.lastMoveAt) >= moveCooldownMs(ctx);
 }
 
-===== FILE: setup\mode.sub.ts (263 bytes) | generated 2025-10-16 15:22:11.737 UTC =====
+===== FILE: setup\mode.sub.ts (263 bytes) | generated 2025-10-23 19:13:26.179 UTC =====
 import type { PlayCtx } from '../play.types';
 import type { LocalState } from './local-state';
 
@@ -1651,7 +1835,7 @@ export function attachModeSub(ctx: PlayCtx, ls: LocalState) {
   });
 }
 
-===== FILE: setup\my-player.sub.ts (826 bytes) | generated 2025-10-16 15:22:11.738 UTC =====
+===== FILE: setup\my-player.sub.ts (826 bytes) | generated 2025-10-23 19:13:26.180 UTC =====
 import { runInInjectionContext } from '@angular/core';
 import { doc } from '@angular/fire/firestore';
 import type { PlayCtx } from '../play.types';
@@ -1676,7 +1860,7 @@ export function attachMyPlayerSub(ctx: PlayCtx, ls: LocalState) {
     });
 }
 
-===== FILE: setup\players.sub.ts (565 bytes) | generated 2025-10-16 15:22:11.739 UTC =====
+===== FILE: setup\players.sub.ts (565 bytes) | generated 2025-10-23 19:13:26.181 UTC =====
 import type { PlayCtx } from '../play.types';
 import type { LocalState } from './local-state';
 import type { Player } from '../../room/player.model';
@@ -1692,7 +1876,7 @@ export function attachPlayersSub(ctx: PlayCtx, ls: LocalState) {
   });
 }
 
-===== FILE: setup\positions.sub.ts (2266 bytes) | generated 2025-10-16 15:22:11.740 UTC =====
+===== FILE: setup\positions.sub.ts (2266 bytes) | generated 2025-10-23 19:13:26.182 UTC =====
 import type { PlayCtx } from '../play.types';
 import type { LocalState } from './local-state';
 
@@ -1754,7 +1938,7 @@ export function attachPositionsSub(ctx: PlayCtx, ls: LocalState) {
   });
 }
 
-===== FILE: setup\room.sub.ts (2153 bytes) | generated 2025-10-16 15:22:11.740 UTC =====
+===== FILE: setup\room.sub.ts (2153 bytes) | generated 2025-10-23 19:13:26.183 UTC =====
 import { runInInjectionContext } from '@angular/core';
 import { doc, setDoc } from '@angular/fire/firestore';
 import type { PlayCtx } from '../play.types';
@@ -1818,7 +2002,7 @@ export function attachRoomSub(ctx: PlayCtx, ls: LocalState) {
   });
 }
 
-===== FILE: sidebar.component.html (362 bytes) | generated 2025-10-16 15:22:11.741 UTC =====
+===== FILE: sidebar.component.html (362 bytes) | generated 2025-10-23 19:13:26.183 UTC =====
 <!-- src/app/pages/play/sidebar.component.html -->
 <div class="players" *ngIf="players$ | async as players">
   <div class="player" *ngFor="let p of players">
@@ -1828,7 +2012,7 @@ export function attachRoomSub(ctx: PlayCtx, ls: LocalState) {
   </div>
 </div>
 
-===== FILE: ui\mobile-dpad.component.ts (3287 bytes) | generated 2025-10-16 15:22:11.742 UTC =====
+===== FILE: ui\mobile-dpad.component.ts (3287 bytes) | generated 2025-10-23 19:13:26.184 UTC =====
 import { Component, EventEmitter, Output, Input, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
@@ -1941,7 +2125,7 @@ export class MobileDpadComponent {
 
 }
 
-===== FILE: ui\scoreboard-overlay\scoreboard-adapter.service.ts (5191 bytes) | generated 2025-10-16 15:22:11.743 UTC =====
+===== FILE: ui\scoreboard-overlay\scoreboard-adapter.service.ts (5191 bytes) | generated 2025-10-23 19:13:26.185 UTC =====
 import { Injectable, inject } from '@angular/core';
 import { Auth, authState } from '@angular/fire/auth';
 import {
@@ -2099,7 +2283,7 @@ export class ScoreboardAdapterService {
   }
 }
 
-===== FILE: ui\scoreboard-overlay\scoreboard-overlay.component.html (1694 bytes) | generated 2025-10-16 15:22:11.744 UTC =====
+===== FILE: ui\scoreboard-overlay\scoreboard-overlay.component.html (1694 bytes) | generated 2025-10-23 19:13:26.186 UTC =====
 <div class="sb-container">
   <div class="sb-card">
     <!-- Header compact -->
@@ -2151,7 +2335,7 @@ export class ScoreboardAdapterService {
   </div>
 </div>
 
-===== FILE: ui\scoreboard-overlay\scoreboard-overlay.component.scss (2323 bytes) | generated 2025-10-16 15:22:11.745 UTC =====
+===== FILE: ui\scoreboard-overlay\scoreboard-overlay.component.scss (2323 bytes) | generated 2025-10-23 19:13:26.186 UTC =====
 .sb-container {
   position: fixed;
   top: 0.75rem;
@@ -2253,7 +2437,7 @@ export class ScoreboardAdapterService {
   100% { opacity: 0; transform: translateY(-8px); }
 }
 
-===== FILE: ui\scoreboard-overlay\scoreboard-overlay.component.ts (1133 bytes) | generated 2025-10-16 15:22:11.746 UTC =====
+===== FILE: ui\scoreboard-overlay\scoreboard-overlay.component.ts (1133 bytes) | generated 2025-10-23 19:13:26.187 UTC =====
 // src/app/pages/play/ui/scoreboard-overlay/scoreboard-overlay.component.ts
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { AsyncPipe, NgForOf, NgIf } from '@angular/common';

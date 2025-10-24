@@ -22,7 +22,7 @@ import { PositionsService } from './positions.service';
 import { RoomService } from '../room/room.service';
 import { BotService } from './bot.service';
 import { PlayRenderer } from './play.renderer';
-import { Pos } from './play.models';
+import { Pos, OtherPos } from './play.models';
 import { setupPlay } from './play.setup';
 import type { RecentTag } from './play.types';
 import { ScoreboardOverlayComponent } from './ui/scoreboard-overlay/scoreboard-overlay.component';
@@ -33,6 +33,8 @@ import { SpawnCoordService } from '../../services/spawn-coord.service';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatchService } from './match.service';
 import { Database } from '@angular/fire/database';
+import { Subscription } from 'rxjs';
+import type { Role } from '@tag/types';
 
 @Component({
   selector: 'app-play',
@@ -59,11 +61,12 @@ export class PlayComponent implements OnInit, OnDestroy {
   readonly cd = inject(ChangeDetectorRef);
   readonly env = inject(EnvironmentInjector);
   readonly zone = inject(NgZone);
- readonly rtdb = inject(Database);
+  readonly rtdb = inject(Database);
   readonly positions = inject(PositionsService);
   readonly match = inject(MatchService);
   readonly roomSvc = inject(RoomService);
   readonly bots = inject(BotService);
+
   // Canvas renderer
   readonly renderer = new PlayRenderer();
 
@@ -73,7 +76,7 @@ export class PlayComponent implements OnInit, OnDestroy {
   // Exposés au template
   matchId = '';
   uid = '';
-  role = 'prey' as any;
+  role: Role = 'prey';           // ✅ aligne PlayCtx.role
   myScore = 0;
   targetScore = 0;
   timeLeft = 0;
@@ -86,16 +89,19 @@ export class PlayComponent implements OnInit, OnDestroy {
   hunterUids: string[] = [];
   me: Pos = { x: 0, y: 0 };
   keys = new Set<string>();
-  others = new Map<string, Pos>();
+  others = new Map<string, OtherPos>();   // ✅ aligne PlayCtx.others
   lastMoveAt = 0;
   lastTagMs = 0;
   invulnerableUntil = 0;
 
   // Option auto-bots (?bots=N)
   desiredBots = 0;
-  sub: any;
 
-roomMode: 'classic'|'transmission' = 'classic';
+  // Flags & subscriptions
+  sub!: Subscription;            // ✅ public + typé (aligne PlayCtx.sub)
+  roomMode: 'classic'|'transmission' = 'classic';
+  private adoptedOnce = false;
+  private autoSpawnDone = false;
 
   // Getters utilisés par le template
   get showRecentTag(): boolean { return !!this.recentTag && this.recentTag.until > Date.now(); }
@@ -103,13 +109,13 @@ roomMode: 'classic'|'transmission' = 'classic';
 
   private dispose: (() => void) | null = null;
 
- readonly showScoreboard = signal<boolean>(false);
+  readonly showScoreboard = signal<boolean>(false);
 
   ngOnInit(): void {
+    const saved = localStorage.getItem('showScoreboard');
+    if (saved === '1') this.showScoreboard.set(true);
+    window.addEventListener('keydown', this._onKey);
 
-   const saved = localStorage.getItem('showScoreboard');
-  if (saved === '1') this.showScoreboard.set(true);
-  window.addEventListener('keydown', this._onKey);
     // Route / matchId / uid initial
     this.matchId = this.route.snapshot.paramMap.get('matchId')
                 || this.route.snapshot.paramMap.get('id') || '';
@@ -117,38 +123,52 @@ roomMode: 'classic'|'transmission' = 'classic';
     this.debug.uid = this.uid;
     this.debug.match = this.matchId;
 
-    // Lire ?bots=N
+    // Lire ?bots=N (optionnel)
     const n = parseInt(new URLSearchParams(location.search).get('bots') || '', 10);
     this.desiredBots = Number.isFinite(n) && n > 0 ? Math.min(n, 12) : 0;
 
-    // (Optionnel) on initialise "me" avec le point de spawn choisi dans la room.
-    // Le setupPlay peut décider d'utiliser ce point si tu l’as câblé côté setup.
+    // Initialiser "me" avec le point de spawn choisi dans la room (si branché)
     const s = this.spawnSvc.xy();
     this.me = { x: s.x, y: s.y };
 
-    // Démarre la logique runtime (auth+bootstrap+loop+subs)
-    
-
+    // Abonnement room → maj owner / mode / score cible
     this.sub = this.match.room$(this.matchId).subscribe((room: any) => {
       if (!room) return;
-      this.roomMode = (room.mode ?? 'classic');
-      this.targetScore = room.targetScore ?? 0;
+      this.roomMode     = (room.mode ?? 'classic');
+      this.targetScore  = room.targetScore ?? 0;
+      this.roomOwnerUid = room.ownerUid ?? null;
+
+      // Il n’y a qu’un owner : on n’adopte et n’auto-spawn que si JE suis l’owner.
+      if (this.isOwnerNow) {
+        // Adopte les bots déjà présents (créés depuis la Room) une seule fois
+        if (!this.adoptedOnce) {
+          this.bots.adoptExistingBots(this.matchId);
+          this.adoptedOnce = true;
+        }
+        // Auto-spawn via ?bots=N (une seule fois)
+        if (!this.autoSpawnDone && this.desiredBots > 0) {
+          this.bots.spawn(this.matchId, this.desiredBots);
+          this.autoSpawnDone = true;
+        }
+      }
+
       this.cd.markForCheck();
     });
-this.dispose = setupPlay(this);
+
+    // Démarre la logique runtime (auth+bootstrap+loop+subs) — PlayCtx attendu
+    this.dispose = setupPlay(this);   // ✅ maintenant assignable à PlayCtx
   }
 
   exitToLobby(): void {
-      try {
-        // (optionnel) nettoyages avant de quitter la partie :
-        // this.matchService.leaveCurrentMatch();   // si tu as une méthode maison
-        // this.positionsService.teardown();        // arrêter listeners/loops si besoin
-
-      } finally {
-        this.router.navigateByUrl('/lobby');
-      }
+    try {
+      // (optionnel) nettoyages avant de quitter la partie
+      // this.match.leaveCurrentMatch?.();
+      // this.positions.teardown?.();
+    } finally {
+      this.router.navigateByUrl('/lobby');
     }
-  
+  }
+
   // Contrôles bots (utilisés par les boutons de la toolbar)
   spawnBots(n = 3) { if (this.isOwnerNow) this.bots.spawn(this.matchId, n); }
   stopBots() { if (this.isOwnerNow) this.bots.stopAll(this.matchId); }
@@ -175,8 +195,8 @@ this.dispose = setupPlay(this);
 
   ngOnDestroy(): void {
     try { this.dispose?.(); } finally { this.dispose = null; }
-      window.removeEventListener('keydown', this._onKey);
-
+    try { this.sub?.unsubscribe(); } catch {}
+    window.removeEventListener('keydown', this._onKey);
   }
 
   private _onKey = (e: KeyboardEvent) => {
@@ -192,5 +212,4 @@ this.dispose = setupPlay(this);
     this.showScoreboard.set(v);
     localStorage.setItem('showScoreboard', v ? '1' : '0');
   }
-
 }

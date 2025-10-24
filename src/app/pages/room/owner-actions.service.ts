@@ -1,7 +1,7 @@
 // src/app/pages/room/owner-actions.service.ts
 import { Injectable, inject } from '@angular/core';
 import { RoomService } from './room.service';
-import { PlayerVM } from './room.component';
+import type { PlayerVM } from './room.models';  
 import type { Role } from '@tag/types';
 
 type HunterScope = 'all' | 'ready';

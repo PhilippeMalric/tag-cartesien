@@ -93,6 +93,7 @@ events$ = (matchId: string): Observable<EventItem[]> => {
       // lire le mode pour payload
       const roomSnap = await getDoc(doc(this.fs, `rooms/${matchId}`));
       const mode = (roomSnap.data()?.['mode'] ?? 'classic') as GameMode;
+console.log('Emitting tag event', { matchId, uid, victimUid, x, y, mode });
 
       await addDoc(collection(this.fs, `rooms/${matchId}/events`), {
         type: 'tag/hit',

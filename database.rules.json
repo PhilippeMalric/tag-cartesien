@@ -45,7 +45,7 @@
       "$roomId": {
         "$botId": {
           ".read": "auth != null",
-          ".write": "auth != null || auth.token.admin === true",
+          ".write": "auth != null",
           "x": { ".validate": "newData.isNumber()" },
           "y": { ".validate": "newData.isNumber()" },
           "t": { ".validate": "newData.isNumber()" },

@@ -12,21 +12,17 @@ import { getDatabase } from "firebase-admin/database";
 initializeApp();
 setGlobalOptions({ region: "us-central1", maxInstances: 10 });
 
-
 const db = getFirestore();
-
-
 const rtdb = getDatabase();
 
 // Bornes du monde (adapte si besoin)
 const WORLD = { minX: -50, maxX: 50, minY: -50, maxY: 50 };
 
-// Respawn simple : au hasard dans les bornes, avec option d'éviter de respawn exactement sur (nearX, nearY)
+// Respawn simple : au hasard dans les bornes, avec option d'éviter de respawn trop près du point (nearX, nearY)
 function pickRespawnSimple(nearX?: number, nearY?: number) {
   const rand = (a: number, b: number) => Math.floor(Math.random() * (b - a + 1)) + a;
   let x = rand(WORLD.minX, WORLD.maxX);
   let y = rand(WORLD.minY, WORLD.maxY);
-  // si on a la position du tag, on évite de respawn trop près (rayon 5)
   if (Number.isFinite(nearX) && Number.isFinite(nearY)) {
     const dx = x - (nearX as number);
     const dy = y - (nearY as number);
@@ -71,7 +67,7 @@ export const onPlayerDeleted = onDocumentDeleted("rooms/{roomId}/players/{uid}",
   await cleanRoomAfterPlayerRemoval(db, roomId, uid);
 });
 
-/** Ton trigger onTag existant (inchangé) */
+// -------- Types locaux utiles ----------
 type PlayerDoc = {
   score?: number;
   combo?: number;
@@ -89,26 +85,28 @@ type RoomDoc = {
   playersCount?: number;
   state?: "idle" | "running" | "ended" | "done";
 };
-type TagEventData = {
-  type?: string;
-  hunterUid?: string;
-  victimUid?: string;
-  x?: number;
-  y?: number;
-};
 
+// =======================================
+// ✅ onTag: ne lit QUE data.payload
+// =======================================
 export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async (event) => {
   const snap = event.data;
   if (!snap) return;
 
-  const data = snap.data() as any; // EventItem-like { type, createdAt, payload: {...} }
+  const data = snap.data() as any; // EventItem-like: { type, createdAt, payload: {...} }
   if (data?.type !== "tag/hit") return;
 
+  // Utiliser UNIQUEMENT payload
+  const payload = data?.payload ?? null;
+  if (!payload) return;
+
   const roomId = String(event.params.roomId || "");
-  const hunterUid = data?.payload?.byUid as string | undefined;
-  const victimUid = data?.payload?.targetUid as string | undefined;
-  const tagX = data?.payload?.x as number | undefined;
-  const tagY = data?.payload?.y as number | undefined;
+  const hunterUid = payload.byUid as string | undefined;
+  const victimUid = payload.targetUid as string | undefined;
+  const tagX = payload.x as number | undefined;
+  const tagY = payload.y as number | undefined;
+  const payloadMode = (payload.mode as RoomDoc["mode"]) ?? undefined;
+
   if (!roomId || !hunterUid || !victimUid) return;
 
   const isBotVictim = victimUid.startsWith("bot-");
@@ -116,7 +114,7 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
   const roomRef = db.doc(`rooms/${roomId}`);
   const eventRef = snap.ref;
 
-  // Idempotence
+  // Idempotence du traitement "score"
   const markerRef = eventRef.collection("_processed").doc("score");
   const claimed = await db.runTransaction(async (tx) => {
     const m = await tx.get(markerRef);
@@ -129,7 +127,7 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
   // Lire la room (pour le mode & règles de fin)
   const roomSnap = await roomRef.get();
   const room = (roomSnap.data() || {}) as RoomDoc;
-  const modeName = (room.mode ?? "classic") as NonNullable<RoomDoc["mode"]>;
+  const modeName = (payloadMode ?? room.mode ?? "classic") as NonNullable<RoomDoc["mode"]>;
 
   // 1) +1 au chasseur
   const hunterRef = db.doc(`rooms/${roomId}/players/${hunterUid}`);
@@ -142,12 +140,18 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
     });
   });
 
-  // 2) Respawn si victime = BOT
+  // 2) Respawn si victime = BOT (RTDB: champs conformes aux règles /bots)
   if (isBotVictim) {
     const { x: rx, y: ry } = pickRespawnSimple(tagX ?? 0, tagY ?? 0);
-    await rtdb.ref(`bots/${roomId}/${victimUid}`).update({ x: rx, y: ry, t: Date.now() });
+    await rtdb.ref(`bots/${roomId}/${victimUid}`).update({
+      x: rx,
+      y: ry,
+      t: Date.now(),
+      // name facultatif mais autorisé si tu veux l’inclure:
+      // name: 'Bot',
+    });
   } else {
-    // 3) Victime humaine → délèguer au handler du mode
+    // 3) Victime humaine → déléguer au handler du mode
     const playersSnap = await db.collection(`rooms/${roomId}/players`).get();
     const players = new Map<string, PlayerDoc>();
     playersSnap.forEach((d) => players.set(d.id, (d.data() || {}) as PlayerDoc));
@@ -166,7 +170,7 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
     }
   }
 
-  // 4) Conditions de fin (identiques à ta version)
+  // 4) Conditions de fin (identiques à ta logique mais basées sur le mode final)
   if (modeName === "classic") {
     const target = room.targetScore ?? 5;
     if (target > 0) {
@@ -222,7 +226,6 @@ export const onTag = onDocumentCreated("rooms/{roomId}/events/{eventId}", async 
     }
   }
 });
-
 
 export const setRoomOwner = onCall(async (req) => {
   const auth = req.auth;
