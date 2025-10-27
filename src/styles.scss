@@ -23,8 +23,8 @@ $dark-theme: mat.define-theme((
 }
 
 /* Sombre si <html> a data-theme="dark" OU la classe .dark */
-:root[data-theme="dark"],
-:root.dark {
+:root[data-theme="dark"]
+{
   @include mat.all-component-colors($dark-theme);
   @include mat.all-component-typographies($dark-theme);
   @include mat.all-component-densities($dark-theme);
@@ -41,8 +41,8 @@ $dark-theme: mat.define-theme((
 
   /* Couleurs jeu – versions “light” */
   --canvas-bg: #0b0d10;
-  --grid:      color-mix(in srgb, var(--mat-sys-outline-variant) 70%, white);
-  --axis:      color-mix(in srgb, var(--mat-sys-outline-variant) 55%, white);
+  --grid:     black;
+  --axis:      black;
 
   --self:      var(--mat-sys-primary);
   --hunter:    #d32f2f;
@@ -51,8 +51,8 @@ $dark-theme: mat.define-theme((
 }
 
 /* Dark */
-:root[data-theme="dark"],
-:root.dark {
+:root[data-theme="dark"]
+{
   --bg:      var(--mat-sys-background);
   --fg:      white;
   --card:    var(--mat-sys-surface-container-high);
@@ -60,8 +60,8 @@ $dark-theme: mat.define-theme((
 
   /* Couleurs jeu – versions “dark” */
   --canvas-bg: #0b0d10;
-  --grid:      color-mix(in srgb, var(--mat-sys-outline-variant) 35%, transparent);
-  --axis:      color-mix(in srgb, var(--mat-sys-outline-variant) 50%, transparent);
+  --grid:      white;
+  --axis:      white;
 
   --self:      color-mix(in srgb, var(--mat-sys-primary) 75%, white);
   --hunter:    #ff7676;
@@ -75,19 +75,15 @@ html, body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-}
+} 
 
 *, *::before, *::after { box-sizing: border-box; }
 
-/* Icônes Material Symbols */
-.material-symbols-outlined {
-  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
-}
 
-:root {
-  --hunter: #ff7a00; /* orange */
-}
 
-.material-symbols-outlined {
-  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+/* Transition douce lors du switch de thème (respecte reduced motion) */
+@media (prefers-reduced-motion: no-preference) {
+  html, body {
+    transition: background-color 160ms ease, color 160ms ease;
+  }
 }

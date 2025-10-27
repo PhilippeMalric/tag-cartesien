@@ -1,9 +1,8 @@
-import { Component, OnInit, inject, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnInit, inject, ViewChild, ElementRef, computed } from '@angular/core';
 import { FormsModule, ReactiveFormsModule, FormControl, Validators } from '@angular/forms';
 import { AsyncPipe, CommonModule } from '@angular/common';
 import { Observable } from 'rxjs';
 
-import { ThemeService } from '../../services/theme.service';
 import { LobbyFacade } from './lobby.facade';
 import { RoomVM } from './lobby.types';
 
@@ -23,6 +22,7 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatRippleModule } from '@angular/material/core';
 import { RelativeTimePipe } from '../../shared/pipes/relative-time.pipe';
+import { ThemeService } from 'src/app/core/theme.service';
 
 @Component({
   selector: 'app-lobby',
@@ -39,7 +39,13 @@ import { RelativeTimePipe } from '../../shared/pipes/relative-time.pipe';
 })
 export class LobbyComponent implements OnInit {
   readonly theme = inject(ThemeService);
-   facade = inject(LobbyFacade);
+  facade = inject(LobbyFacade);
+
+    icon = computed(() => this.theme.theme() === 'dark' ? 'light_mode' : 'dark_mode');
+    ariaLabel = computed(() => this.theme.theme() === 'dark'
+      ? 'Activer le thème clair'
+      : 'Activer le thème sombre');
+
 
   // === API exposée au template (conservation de ton contrat) ===
   get showDevCleanup() { return this.facade.showDevCleanup; }
@@ -68,7 +74,9 @@ export class LobbyComponent implements OnInit {
     // Initialise le champ avec la valeur actuelle de la façade
     this.nameCtrl.setValue(this.displayName ?? '');
   }
-
+  toggleTheme() {
+      this.theme.toggle();
+    }
   // Méthodes appelées par le template existant
   refresh() { this.facade.refresh(); }
   createRoom() { this.facade.createRoom(); }

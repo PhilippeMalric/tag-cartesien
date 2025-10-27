@@ -17,7 +17,6 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 // Services & utils
-import { ThemeService } from '../../services/theme.service';
 import { PositionsService } from './positions.service';
 import { RoomService } from '../room/room.service';
 import { BotService } from './bot.service';
@@ -35,6 +34,7 @@ import { MatchService } from './match.service';
 import { Database } from '@angular/fire/database';
 import { Subscription } from 'rxjs';
 import type { Role } from '@tag/types';
+import { ThemeService } from 'src/app/core/theme.service';
 
 @Component({
   selector: 'app-play',

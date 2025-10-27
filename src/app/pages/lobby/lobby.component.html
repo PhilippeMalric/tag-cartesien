@@ -1,10 +1,15 @@
 <!-- Toolbar -->
 <mat-toolbar color="primary">
   <span>Lobby</span>
+  <button mat-icon-button (click)="toggleTheme()" [attr.aria-label]="ariaLabel()">
+        <mat-icon fontSet="material-symbols-outlined">{{ icon() }}</mat-icon>
+    </button>
   <span class="spacer"></span>
   <button mat-icon-button matTooltip="Rafraîchir" (click)="refresh()">
     <mat-icon fontSet="material-symbols-outlined">refresh</mat-icon>
   </button>
+  <span class="spacer"></span>
+  
 </mat-toolbar>
 
 <div class="lobby-grid">

@@ -20,6 +20,17 @@
           el.dataset.theme = dark ? 'dark' : 'light';
         } catch (e) {}
       })();
+
+      (function () {
+        try {
+          var k = 'theme';
+          var t = localStorage.getItem(k);
+          if (!t) {
+            t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+          }
+          if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+        } catch (e) {}
+      })();
     </script>
 
   </head>
