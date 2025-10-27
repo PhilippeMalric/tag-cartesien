@@ -7,7 +7,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { Observable, Subject, Subscription, combineLatest, firstValueFrom, of } from 'rxjs';
 import { debounceTime, distinctUntilChanged, filter, map, shareReplay, take, auditTime } from 'rxjs/operators';
 
-import { Auth as FirebaseAuth, signInAnonymously } from '@angular/fire/auth';
+import { Auth, Auth as FirebaseAuth, signInAnonymously } from '@angular/fire/auth';
 
 import { RoomService } from './room.service';
 import type { Role, GameMode, RoomDoc } from '@tag/types';
@@ -17,6 +17,7 @@ import type { HunterScope, PlayerVM } from './room.models';
 import { SpawnCoordService } from '../../services/spawn-coord.service';
 import { byUid } from './room.selectors';
 import { toRoleMap } from './roles.util';
+import { doc, Firestore, getDoc } from 'firebase/firestore';
 
 @Injectable({ providedIn: 'root' })
 export class RoomFacade {
@@ -99,6 +100,8 @@ export class RoomFacade {
       if (!this.auth.currentUser) await signInAnonymously(this.auth);
       const uid = this.auth.currentUser!.uid;
       const displayName = this.auth.currentUser?.displayName || 'Joueur';
+      //console.log("log : ",this.auth.currentUser?.displayName);
+      
       try {
         await this.roomSvc.ensureSelfPlayerDoc(this._roomId, uid, displayName);
         this.log(`FS ensureSelfPlayerDoc(${this._roomId}, ${uid})`);
@@ -379,5 +382,8 @@ export class RoomFacade {
     this.log(`Owner: toggle hunter → ${targetUid} = ${nextRoles[targetUid]}`);
     return nextRoles[targetUid];
   }
+
+
+
 
 }

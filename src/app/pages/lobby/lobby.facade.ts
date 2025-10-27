@@ -4,13 +4,13 @@ import { Observable, map, startWith } from 'rxjs';
 import { RoomVM } from './lobby.types';
 
 // AngularFire
-import { Auth as FirebaseAuth, updateProfile } from '@angular/fire/auth';
+import { Auth, Auth as FirebaseAuth, reload, updateProfile } from '@angular/fire/auth';
 import {
   Firestore, CollectionReference,
   collection, collectionData, doc, setDoc, query, orderBy, limit,
-  serverTimestamp
+  serverTimestamp, updateDoc
 } from '@angular/fire/firestore';
-import { Database, ref, set as rtdbSet } from '@angular/fire/database';
+import { Database, ref, update as rtdbUpdate } from '@angular/fire/database';
 
 // Services
 import { DevCleanupService } from '../../services/dev-cleanup.service';
@@ -29,8 +29,8 @@ export class LobbyFacade {
   private devCleanup = inject(DevCleanupService);
   private snack = inject(MatSnackBar);
 
-  private _mode = signal<GameMode>('classic');       // NEW
-  private _targetScore = signal<number>(5);          // NEW
+  private _mode = signal<GameMode>('classic');
+  private _targetScore = signal<number>(5);
 
   // getters/setters (proxies)
   get mode(): GameMode { return this._mode(); }
@@ -63,10 +63,9 @@ export class LobbyFacade {
   }
 
   init(): void {
-    runInInjectionContext(this.env, () => {
+    runInInjectionContext(this.env, async () => {
       const roomsCol = collection(this.db, 'rooms') as CollectionReference<any>;
       const q = query(roomsCol, orderBy('updatedAt', 'desc'), limit(50));
-      // rooms$ mapping → inclure le mode
       this.rooms$ = collectionData(q, { idField: 'id' }).pipe(
         startWith([] as any[]),
         map((rows: any[]) =>
@@ -83,6 +82,13 @@ export class LobbyFacade {
           }))
         )
       );
+      const user = this.auth.currentUser;
+        if (!user) return;
+
+        await updateProfile(user, { displayName: this.displayName });
+        await reload(user);
+     // this.auth.currentUser?.displayName
+
     });
   }
 
@@ -102,7 +108,33 @@ export class LobbyFacade {
     setTimeout(() => this.loading.set(false), 350);
   }
 
-  // Sauvegarde centralisée du displayName (Auth + users/{uid} + localStorage)
+  /** Déduit l’ID de room actif depuis l’URL (/room/:id), si présent */
+  private activeRoomId(): string | null {
+    const m = this.router.url.match(/\/room\/([^\/?#]+)/i);
+    return m?.[1] ?? null;
+  }
+
+  /** Propage le nom vers le joueur de la room active (Firestore + RTDB si dispo) */
+  private async fanOutPlayerNameToActiveRoom(name: string) {
+    const uid = this.auth.currentUser?.uid;
+    const roomId = this.activeRoomId();
+    if (!uid || !roomId) return;
+
+    // Firestore: rooms/{roomId}/players/{uid}.displayName
+    try {
+      await updateDoc(doc(this.db, 'rooms', roomId, 'players', uid), {
+        displayName: name,
+        updatedAt: serverTimestamp(),
+      });
+    } catch { /* tolérant si le doc player n’existe pas encore */ }
+
+    // RTDB (optionnel) : rooms/{roomId}/players/{uid}/name
+    try {
+      await rtdbUpdate(ref(this.rtdb, `rooms/${roomId}/players/${uid}`), { name });
+    } catch { /* ignore si chemin non présent côté RTDB */ }
+  }
+
+  // Sauvegarde centralisée du displayName (Auth + users/{uid} + localStorage) + fan-out joueur actif
   async saveDisplayName(name: string) {
     const user = this.auth.currentUser;
     const safe = (name || '').trim().slice(0, 24);
@@ -125,6 +157,9 @@ export class LobbyFacade {
         { displayName: safe, updatedAt: serverTimestamp() },
         { merge: true }
       );
+
+      // 3) Fan-out vers le joueur de la room active (si on est déjà dans une room)
+      await this.fanOutPlayerNameToActiveRoom(safe);
 
       this.snack.open('Nom mis à jour', 'OK', { duration: 2000 });
     } catch (e: any) {
@@ -158,7 +193,8 @@ export class LobbyFacade {
         displayNameOwner: name || null,
       }, { merge: true });
 
-      try { await rtdbSet(ref(this.rtdb, `roomsMeta/${roomId}/ownerUid`), uid); } catch {}
+      // RTDB meta (optionnel)
+      try { await rtdbUpdate(ref(this.rtdb, `roomsMeta/${roomId}`), { ownerUid: uid }); } catch {}
     });
 
     await this.router.navigate(['/room', roomId]);
