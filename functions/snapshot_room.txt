@@ -1,0 +1,1995 @@
+
+===== FILE: in-zone.operator.ts (469 bytes) | generated 2025-10-31 17:14:15.530 UTC =====
+import { NgZone } from '@angular/core';
+import { Observable } from 'rxjs';
+
+/** Opérateur RxJS : réémet dans la zone Angular */
+export function inZone<T>(zone: NgZone) {
+  return (source: Observable<T>) =>
+    new Observable<T>(observer =>
+      source.subscribe({
+        next: v => zone.run(() => observer.next(v)),
+        error: e => zone.run(() => observer.error(e)),
+        complete: () => zone.run(() => observer.complete()),
+      })
+    );
+}
+
+===== FILE: index.ts (99 bytes) | generated 2025-10-31 17:14:15.532 UTC =====
+export * from './player.model';
+export * from './room.service';
+export * from './room.component';
+
+===== FILE: owner-actions.service.ts (5599 bytes) | generated 2025-10-31 17:14:15.533 UTC =====
+// src/app/pages/room/owner-actions.service.ts
+import { Injectable, inject } from '@angular/core';
+import { RoomService } from './room.service';
+import type { PlayerVM } from './room.models';  
+import type { Role } from '@tag/types';
+
+type HunterScope = 'all' | 'ready';
+type RoleFR = 'hunter' | 'prey';
+
+
+
+function toRoleMapFR(mapFR: Record<string, Role>): Record<string, Role> {
+  const out: Record<string, Role> = {};
+  for (const [uid, rfr] of Object.entries(mapFR)) out[uid] = rfr;
+  return out;
+}
+// ------------------------------------------------------
+
+@Injectable({ providedIn: 'root' })
+export class OwnerActionsService {
+  private readonly roomSvc = inject(RoomService);
+
+  /** Filtre utilitaire: enlève les joueurs sans uid ou les bots */
+  private sanitizePlayers(arr: PlayerVM[] | null | undefined): PlayerVM[] {
+    return (arr ?? []).filter(p => !!p?.uid && !String(p.uid).startsWith('bot-'));
+  }
+
+  /** Tire un chasseur et applique les rôles côté Firestore (un seul chasseur) */
+  async applyRandomHunter(
+    roomId: string,
+    players: PlayerVM[],
+    scope: HunterScope
+  ): Promise<{ uid: string; displayName?: string }> {
+    const all = this.sanitizePlayers(players);
+    const ready = all.filter(p => !!p.ready);
+    const pool = scope === 'ready' ? (ready.length ? ready : all) : all;
+
+    if (!pool.length) throw new Error('Aucun joueur éligible au tirage.');
+
+    const idx = Math.floor(Math.random() * pool.length);
+    const hunterUid = pool[idx].uid;
+
+    // Affectation mono-chasseur (FR)
+    const rolesFR: Record<string, Role> = {};
+    for (const p of all) rolesFR[p.uid] = p.uid === hunterUid ? 'hunter' : 'prey';
+
+    // ✅ Convertit en Role partagé avant écriture
+    await this.roomSvc.setRoles(roomId, toRoleMapFR(rolesFR));
+
+    // (optionnel) garder hunterUid synchro si tu utilises encore ce champ
+    if ((this.roomSvc as any).setHunter) {
+      await (this.roomSvc as any).setHunter(roomId, hunterUid, false);
+    }
+
+    return { uid: hunterUid, displayName: pool[idx].displayName };
+  }
+
+  /**
+   * Toggle chasseur (mono-chasseur) :
+   * - si target est déjà chasseur → on rend le rôle de chasseur au owner
+   * - sinon → target devient le seul chasseur
+   */
+  async toggleHunter(
+    roomId: string,
+    ownerUid: string,
+    targetUid: string,
+    isCurrentlyHunter: boolean,
+    getAllPlayers: () => Promise<PlayerVM[]>
+  ): Promise<string> {
+    const all = this.sanitizePlayers(await getAllPlayers());
+    if (!all.length) throw new Error('Aucun joueur');
+
+    const nextHunter = isCurrentlyHunter ? ownerUid : targetUid;
+
+    const rolesFR: Record<string, RoleFR> = {};
+    for (const p of all) rolesFR[p.uid] = p.uid === nextHunter ? 'hunter' : 'prey';
+
+    // ✅ converti en Role partagé
+    await this.roomSvc.setRoles(roomId, toRoleMapFR(rolesFR));
+
+    // (optionnel) synchroniser hunterUid
+    if ((this.roomSvc as any).setHunter) {
+      await (this.roomSvc as any).setHunter(roomId, nextHunter, false);
+    }
+
+    return nextHunter;
+  }
+
+  /**
+   * Multi-chasseurs: toggle le rôle de `targetUid`.
+   * Contrainte: ≥1 chasseur ET ≥1 chassé après l’opération.
+   * - Si target est chasseur → on le rend chassé SI >= 1 autre chasseur humain reste.
+   * - Si target est chassé → on le rend chasseur SI >= 1 autre chassé (humain ou bot) reste.
+   * Écrit uniquement la clé touchée: roles.<targetUid>
+   */
+  // Multi-chasseurs permis (ne touche pas hunterUid)
+  async toggleHunterMulti(
+    roomId: string,
+    targetUid: string,
+    isCurrentlyHunter: boolean,
+    getAllPlayers: () => Promise<PlayerVM[]>,
+    getCurrentRoles: () => Promise<Record<string, RoleFR> | null>
+  ): Promise<RoleFR> {
+    // 1) Prépare les données & garde-fous (même logique que ta version)
+    const players = this.sanitizePlayers(await getAllPlayers());
+    if (!players.length) throw new Error('Aucun joueur');
+
+    const rolesMap = { ...(await getCurrentRoles() || {}) } as Record<string, RoleFR>;
+    for (const p of players) if (!rolesMap[p.uid]) rolesMap[p.uid] = 'prey';
+
+    const humanUids = new Set(players.map(p => p.uid));
+    const isHuman = (uid: string) => humanUids.has(uid);
+
+    const countHumanHunters = Object.entries(rolesMap)
+      .filter(([uid, r]) => isHuman(uid) && r === 'hunter').length;
+
+    const countHumanRunners = Object.entries(rolesMap)
+      .filter(([uid, r]) => isHuman(uid) && r === 'prey').length;
+
+    const hasBotRunner = Object.entries(rolesMap)
+      .some(([uid, r]) => !isHuman(uid) && r === 'prey');
+
+    // Rôle cible (toggle)
+    const nextRole: RoleFR = isCurrentlyHunter ? 'prey' : 'hunter';
+
+    // 2) Règles: ≥1 chasseur humain ET ≥1 chassé (humain ou bot) après
+    if (nextRole === 'prey' && isCurrentlyHunter && countHumanHunters <= 1) {
+      throw new Error('Il doit rester au moins un chasseur (humain).');
+    }
+    if (nextRole === 'hunter') {
+      const humanRunnersAfter = countHumanRunners - (isCurrentlyHunter ? 0 : 1);
+      if (!hasBotRunner && humanRunnersAfter < 1) {
+        throw new Error('Il doit rester au moins un chassé (humain ou bot).');
+      }
+    }
+
+    // 3) ✅ Écriture transactionnelle (room + player) SANS mono-chasseur
+    await this.roomSvc.setPlayerRole(roomId, targetUid, nextRole);
+    // ^ cette méthode met à jour rooms.roles[targetUid] et le doc players/<uid> { role, updatedAt, ... } en 1 transaction. :contentReference[oaicite:1]{index=1}
+
+    return nextRole;
+  }
+
+}
+
+===== FILE: player.model.ts (328 bytes) | generated 2025-10-31 17:14:15.534 UTC =====
+import type { PlayerDoc, Role } from '@tag/types';
+
+export type Player = PlayerDoc & {
+  uid: string;                   // idField injecté côté client
+  displayName: string;           // si tu veux forcer required côté UI
+  ready?: boolean;
+  role?: Role;
+  score?: number;
+  spawn?: { x: number; y: number };
+};
+
+===== FILE: role-mapper.util.ts (850 bytes) | generated 2025-10-31 17:14:15.535 UTC =====
+import type { Role } from '@tag/types';
+
+/** Normalise un libellé potentiel (FR/EN) vers Role EN. */
+export function frToRole(v: unknown): Role | null {
+  if (v === 'hunter' || v === 'prey') return v;
+  if (v === 'hunter') return 'hunter';
+  if (v === 'prey') return 'prey';
+  return null;
+}
+
+/** Assure un Record<string, Role> (ignore les valeurs invalides). */
+export function toRoleMap(input?: Record<string, any> | null): Record<string, Role> {
+  const out: Record<string, Role> = {};
+  if (!input) return out;
+  for (const [k, v] of Object.entries(input)) {
+    const r = frToRole(v);
+    if (r) out[k] = r;
+  }
+  return out;
+}
+
+/** Label FR pour affichage. */
+export function roleLabelFR(role?: Role | null): string {
+  if (role === 'hunter') return 'hunter';
+  if (role === 'prey') return 'prey';
+  return '—';
+}
+
+===== FILE: roles.util.ts (878 bytes) | generated 2025-10-31 17:14:15.537 UTC =====
+import type { Role } from '@tag/types';
+
+/** Map typé des rôles par uid */
+export type RoleMap = Record<string, Role | undefined>;
+
+/** Type guard pour une valeur Role valide */
+function isRole(v: unknown): v is Role | null | undefined {
+  return v === 'hunter' || v === 'prey' || v === null || typeof v === 'undefined';
+}
+
+/** 
+ * Coerce tout input (y compris any[]) en RoleMap sûr.
+ * - Rejette les tableaux (pas d’index string) → renvoie {}.
+ * - Ne conserve que les valeurs Role valides.
+ */
+export function toRoleMap(input: unknown): RoleMap {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return Object.freeze({}) as RoleMap;
+  }
+  const out: RoleMap = {};
+  for (const [uid, val] of Object.entries(input as Record<string, unknown>)) {
+    if (isRole(val)) out[uid] = val as Role | undefined;
+  }
+  return out;
+}
+
+===== FILE: room-logger.ts (309 bytes) | generated 2025-10-31 17:14:15.538 UTC =====
+export class RoomLogger {
+  private _writes: string[] = [];
+  constructor(private onChange: (writes: string[]) => void) {}
+
+  log(msg: string) {
+    const t = new Date().toLocaleTimeString();
+    this._writes = [`[${t}] ${msg}`, ...this._writes].slice(0, 30);
+    this.onChange(this._writes);
+  }
+}
+
+===== FILE: room.component.html (6845 bytes) | generated 2025-10-31 17:14:15.539 UTC =====
+<!-- Rangée 2 (dans ta toolbar) -->
+<div class="row row-actions">
+  <button mat-icon-button (click)="goLobby()" aria-label="Retour au lobby" matTooltip="Retour au lobby">
+    <mat-icon fontSet="material-symbols-outlined">arrow_back</mat-icon>
+  </button>
+  @if (isOwner$ | async) {
+
+    <!-- Choix du mode -->
+    <!-- <div class="mode-group">
+      <span class="mode-label">Mode</span>
+      <mat-select
+        [value]="mode"
+        (valueChange)="setMode($event)"
+        aria-label="Choisir le mode">
+        <mat-option value="classic">classic</mat-option>
+        <mat-option value="infection">infection</mat-option>
+        <mat-option value="transmission">transmission</mat-option>
+      </mat-select>
+    </div> -->
+
+ 
+  <!-- Tirage chasseur -->
+  <div class="owner-actions">
+
+    <!-- Terminer -->
+    <button
+      mat-stroked-button
+      color="warn"
+      (click)="endNow()">
+      <mat-icon fontSet="material-symbols-outlined">flag</mat-icon>
+      Terminer
+    </button>
+
+    <!-- ✅ Nouveau : Ajouter un bot (owner seulement) -->
+    <button
+      mat-stroked-button
+      color="primary"
+      class="ml-2"
+      (click)="addBot()"
+      matTooltip="Ajouter un bot (rôle : chassé)">
+      <mat-icon fontSet="material-symbols-outlined" class="mr-1">smart_toy</mat-icon>
+      Ajouter un bot
+    </button>
+  </div>
+    <!-- Menu pour choisir l’ensemble des candidats -->
+    <mat-menu #pickMenu="matMenu" xPosition="before">
+      <button mat-menu-item (click)="pickHunter('all')">
+        <mat-icon fontSet="material-symbols-outlined">group</mat-icon>
+        <span>Parmi tous les joueurs</span>
+      </button>
+      <button mat-menu-item (click)="pickHunter('ready')">
+        <mat-icon fontSet="material-symbols-outlined">how_to_reg</mat-icon>
+        <span>Parmi les joueurs prêts</span>
+      </button>
+    </mat-menu>
+    @if (canStart$ | async) {
+      <button
+        mat-raised-button
+        color="warn"
+        class="btn-start"
+        (click)="start()"
+        matTooltip="Démarrer la partie">
+        <mat-icon fontSet="material-symbols-outlined" class="mr-1">play_arrow</mat-icon>
+        Démarrer
+      </button>
+    }
+  }
+</div>
+
+@if ((isOwner$ | async) && (canStart$ | async)) {
+  <button
+    class="start-fab"
+    mat-fab
+    color="warn"
+    (click)="start()"
+    aria-label="Démarrer">
+    <mat-icon fontSet="material-symbols-outlined">play_arrow</mat-icon>
+  </button>
+}
+
+<div class="container">
+
+  <!-- Carte joueurs -->
+  <mat-card class="mt-3">
+    <mat-card-title>Joueurs</mat-card-title>
+    <mat-card-content>
+      <mat-list>
+        @for (p of (playersVM$ | async); track p.uid) {
+         
+          <mat-list-item>
+            <mat-icon matListItemIcon fontSet="material-symbols-outlined">person</mat-icon>
+
+            <div matListItemTitle class="player-line">
+              <span class="name">
+                {{ p.displayName }}
+                @if (p.uid?.startsWith?.('bot-')) { <small class="ml-2">🤖</small> }
+              </span>
+
+              <!-- Badge de rôle, compact et explicite -->
+              @if (p.roleResolved === 'hunter') {
+                <span class="role-chip role-chip--hunter" matTooltip="Rôle du joueur">
+                  <mat-icon fontSet="material-symbols-outlined" class="chip-ic">target</mat-icon>
+                  Chasseur
+                </span>
+              } @else {
+                <span class="role-chip role-chip--runner" matTooltip="Rôle du joueur">
+                  <mat-icon fontSet="material-symbols-outlined" class="chip-ic">directions_run</mat-icon>
+                  Chassé
+                </span>
+              }
+
+              @if (p.ready) {
+                <span class="ready ml-2" title="Prêt">✅ prêt</span>
+              } @else {
+                <span class="not-ready ml-2" title="Pas prêt">⏳</span>
+              }
+            </div>
+
+            <!-- Bouton (owner seulement) : toggle chasseur pour ce joueur -->
+            <div matListItemMeta>
+              @if (isOwner$ | async) {
+                <button
+                  mat-icon-button
+                  (click)="onToggleHunter(p.uid, p.roleResolved === 'hunter')"
+                  [matTooltip]="(p.roleResolved === 'hunter') ? 'Rendre le rôle de chasseur au propriétaire' : 'Définir comme chasseur'">
+                  <mat-icon fontSet="material-symbols-outlined">
+                    {{ (p.roleResolved === 'hunter') ? 'swap_horiz' : 'gps_fixed' }}
+                  </mat-icon>
+                </button>
+              }
+            </div>
+          </mat-list-item>
+        } @empty {
+          <div class="p-3 text-muted">Aucun joueur pour le moment…</div>
+        }
+      </mat-list>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Mes actions -->
+  <mat-card class="mt-3">
+    <mat-card-title>Mon statut</mat-card-title>
+    <mat-card-content>
+      <button mat-raised-button color="primary" (click)="toggleReady()">
+        @if (myReady) { Je ne suis plus prêt } @else { Je suis prêt }
+      </button>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Point de départ (synchro signals: inputs <-> canvas) -->
+  <mat-card class="mt-3">
+    <mat-card-title>Point de départ</mat-card-title>
+    <mat-card-content>
+      <div class="spawn-grid">
+        <app-map-picker
+          [xy]="spawn.xy()"
+          (xyChange)="spawn.set($event);onSpawnChange($event)">
+        </app-map-picker>
+
+        <div class="spawn-form">
+          <label class="field">
+            <span>X</span>
+            <input type="number"
+                  [value]="spawn.xy().x"
+                  (input)="spawn.set({ x: ($any($event.target).valueAsNumber ?? 0), y: spawn.xy().y })"
+                  step="1" min="-50" max="50">
+          </label>
+
+          <label class="field">
+            <span>Y</span>
+            <input type="number"
+                  [value]="spawn.xy().y"
+                  (input)="spawn.set({ x: spawn.xy().x, y: ($any($event.target).valueAsNumber ?? 0) })"
+                  step="1" min="-50" max="50">
+          </label>
+        </div>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Logs debug (optionnel) -->
+  <!--
+  @if (writes?.length) {
+    <mat-card class="mt-3">
+      <mat-card-title>Logs</mat-card-title>
+      <mat-card-content>
+        <mat-list role="list">
+          @for (w of writes; track w) {
+            <mat-list-item role="listitem">
+              <mat-icon matListItemIcon fontSet="material-symbols-outlined">event_note</mat-icon>
+              <div matListItemTitle>{{ w }}</div>
+            </mat-list-item>
+          }
+        </mat-list>
+      </mat-card-content>
+    </mat-card>
+  }
+  -->
+</div>
+
+===== FILE: room.component.scss (4642 bytes) | generated 2025-10-31 17:14:15.540 UTC =====
+/* ===== Toolbar Room – Responsive (dark) ===== */
+.room-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  padding: 6px 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.35);
+  backdrop-filter: saturate(120%) blur(4px);
+  min-height: 56px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.row-top .title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.title-line {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+
+.subtitle {
+  font-size: .8rem;
+  opacity: .7;
+  line-height: 1.2;
+}
+
+.owner-chip {
+  padding: .1rem .5rem;
+  border-radius: 9999px;
+  font-size: .7rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--mat-sys-primary) 25%, transparent);
+  color: var(--mat-sys-primary);
+}
+
+.spacer { flex: 1 1 auto; }
+
+.btn-start {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  min-height: 36px;
+}
+
+.btn-start .mat-icon {
+  font-size: 20px;
+  line-height: 20px;
+}
+
+.btn-label { display: none; } /* s’affiche dès 480px */
+.only-xs  { display: inline-flex; }
+
+/* ===== Rangée 2 : actions Owner ===== */
+.row-actions {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.mode-group {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: 4px 0;
+}
+
+.mode-label {
+  opacity: .85;
+  font-size: .9rem;
+}
+
+.mode-group .mat-mdc-select { min-width: 160px; }
+
+/* Boutons owner : touch-friendly */
+.owner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.owner-actions button { min-height: 36px; }
+
+/* ===== Breakpoints ===== */
+@media (min-width: 480px) {
+  .btn-label { display: inline; }
+}
+
+/* --- FIX: laisser la rangée 2 visible même en desktop --- */
+@media (min-width: 640px) {
+  .row-actions {
+    display: flex;
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    gap: 8px 12px;
+  }
+}
+
+/* ===== Utilitaires ===== */
+.mr-1 { margin-right: .25rem; }
+.mr-2 { margin-right: .5rem; }
+.ml-2 { margin-left:  .5rem; }
+
+/* Badge générique rôle */
+.role-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .15rem .55rem;
+  border-radius: 9999px;
+  font-size: .8rem;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: .2px;
+  user-select: none;
+  white-space: nowrap;
+}
+.role-chip .chip-ic {
+  font-size: 18px;
+  width: 18px; height: 18px;
+  line-height: 18px;
+}
+
+/* Variantes (dark friendly) */
+.role-chip--hunter {
+  background: color-mix(in srgb, var(--mat-sys-primary, #7aa2ff) 20%, transparent);
+  color: var(--mat-sys-primary, #7aa2ff);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mat-sys-primary, #7aa2ff) 55%, transparent);
+  animation: hunterPulse 2.4s ease-in-out infinite;
+}
+.role-chip--runner {
+  background: color-mix(in srgb, var(--mat-sys-secondary, #a1e3b4) 16%, transparent);
+  color: var(--mat-sys-secondary, #a1e3b4);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mat-sys-secondary, #a1e3b4) 45%, transparent);
+}
+@keyframes hunterPulse {
+  0%, 100% { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mat-sys-primary, #7aa2ff) 55%, transparent); }
+  50%      { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--mat-sys-primary, #7aa2ff) 70%, transparent); }
+}
+
+/* FAB mobile en bas à droite */
+.start-fab {
+  position: fixed;
+  right: 16px;
+  bottom: 84px; /* ajuste selon tes autres FAB */
+  z-index: 30;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+}
+
+/* Carte spawn: grid simple */
+.spawn-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: .75rem;
+}
+@media (min-width: 720px) {
+  .spawn-grid {
+    grid-template-columns: 1fr 220px;
+    align-items: start;
+  }
+}
+.spawn-form .field {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .5rem;
+}
+.spawn-form input[type="number"] {
+  width: 100%;
+  padding: .4rem .5rem;
+  border-radius: .5rem;
+  background: #ffffff0d;
+  border: 1px solid #ffffff1f;
+  color: inherit;
+}
+/* Aligne proprement le bouton action à droite de chaque ligne */
+.player-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.role-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+}
+.role-chip--hunter { background: rgba(255,0,0,0.1); }
+.role-chip--runner { background: rgba(0,0,0,0.05); }
+
+===== FILE: room.component.ts (4835 bytes) | generated 2025-10-31 17:14:15.541 UTC =====
+// src/app/pages/room/room.component.ts
+import {
+  Component,
+  ChangeDetectionStrategy,
+  OnInit,
+  OnDestroy,
+  EnvironmentInjector,
+  inject,
+  input,
+} from '@angular/core';
+import { Router, ActivatedRoute } from '@angular/router';
+import { AsyncPipe, CommonModule } from '@angular/common';
+import { MapPickerComponent, MAT, MatSnackBar } from './room.imports';
+
+import { RoomFacade } from './room.facade';
+import type { PlayerVM } from './room.models';
+import type { RoomDoc, GameMode } from '@tag/types';
+import { Observable, of } from 'rxjs';
+import { MonitorBotsService } from 'src/app/core/monitor-bots.service';
+
+@Component({
+  selector: 'app-room',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.Default,
+  imports: [CommonModule, AsyncPipe, MapPickerComponent, ...MAT],
+  templateUrl: './room.component.html',
+  styleUrls: ['./room.component.scss'],
+})
+export class RoomComponent implements OnInit, OnDestroy {
+  // Inputs (compat HTML)
+  roomId  = input<string>('');
+  isOwner = input<boolean>(false); // non utilisé directement (owner ⇒ via facade.isOwner$)
+
+  // Injections
+  private readonly route  = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly env    = inject(EnvironmentInjector);
+  private readonly snack  = inject(MatSnackBar);
+
+  // Façade (logique déplacée)
+  private readonly facade = inject(RoomFacade);
+
+  // Expositions → HTML (proxies sur la façade)
+  public playersVM$: Observable<PlayerVM[] | null> = of(null);
+  public isOwner$!:  Observable<boolean>;
+  public canStart$!: Observable<boolean>;
+
+  public mode: GameMode = 'classic';
+  public myReady = false;
+  public pickingHunter = false; // lu/écrit via facade, on expose get/set
+  public lastPickedHunter: { uid: string; displayName?: string } | null = null;
+
+  private readonly botsSvc = inject(MonitorBotsService);
+
+  // Map Picker (le HTML utilise spawn.xy())
+  public readonly spawn = this.facade.spawn;
+
+  // ===== Cycle de vie =====
+  async ngOnInit(): Promise<void> {
+    const id = this.roomId() || this.route.snapshot.paramMap.get('id') || '';
+    await this.facade.init(id);
+
+    // brancher les streams/publics de la façade
+    this.playersVM$       = this.facade.playersVM$;
+    this.isOwner$         = this.facade.isOwner$;
+    this.canStart$        = this.facade.canStart$;
+    this.mode             = this.facade.mode;
+    this.myReady          = this.facade.myReady;
+    this.pickingHunter    = this.facade.pickingHunter;
+    this.lastPickedHunter = this.facade.lastPickedHunter;
+  }
+
+  ngOnDestroy(): void {
+    // RoomFacade s’auto-désabonne via DestroyRef
+  }
+
+  // ===== Proxies pour garder le HTML inchangé =====
+  goLobby() { this.facade.goLobby(); }
+  onSpawnChange(xy: { x:number; y:number }) { this.facade.onSpawnChange(xy); }
+  async toggleReady() { await this.facade.toggleReady(); }
+  async start() { await this.facade.start(); }
+  async setMode(m: GameMode) { await this.facade.setMode(m); this.mode = this.facade.mode; }
+  async endNow() { await this.facade.endNow(); }
+  async pickHunter(scope: 'all'|'ready') {
+    this.pickingHunter = true;
+    try {
+      await this.facade.pickHunter(scope);
+      this.lastPickedHunter = this.facade.lastPickedHunter;
+    } finally {
+      this.pickingHunter = false;
+    }
+  }
+
+  /**
+   * Toggle chasseur multi (bouton par joueur) — le HTML appelle déjà cette signature.
+   * On délègue à OwnerActionsService via facade (qui expose les helpers requis).
+   */
+  public async onToggleHunter(targetUid: string, isCurrentlyHunter: boolean): Promise<void> {
+    try {
+      const newRole = await this.facade.toggleHunter(targetUid, isCurrentlyHunter);
+      const msg = (newRole === 'hunter') ? 'Défini comme chasseur' : 'Rendu chassé';
+      this.snack.open(msg, 'OK', { duration: 2000 });
+    } catch (e: any) {
+      this.snack.open(String(e?.message || e), 'OK', { duration: 3000 });
+    }
+  }
+
+ /** Crée 1 bot (rôle par défaut: 'prey') dans la room courante. */
+  public async addBot(role: 'hunter'|'prey' = 'prey'): Promise<void> {
+    const roomId = this.currentRoomId;
+    if (!roomId) {
+      this.snack.open('Room ID manquant', 'OK', { duration: 2000 });
+      return;
+    }
+    try {
+      const uid = await this.botsSvc.addBot(roomId, 'Bot', role);
+      this.snack.open(`Bot créé: ${uid ?? 'inconnu'}`, 'OK', { duration: 2000 });
+    } catch (e: any) {
+      this.snack.open(`Erreur création bot: ${e?.message || e}`, 'OK', { duration: 3000 });
+    }
+  }
+
+  private get currentRoomId(): string {
+    return (typeof this.roomId === 'function' ? this.roomId() : this.roomId as any) 
+          || this.route.snapshot.paramMap.get('id') 
+          || '';
+  }
+}
+
+===== FILE: room.facade.ts (13832 bytes) | generated 2025-10-31 17:14:15.543 UTC =====
+import {
+  Injectable, EnvironmentInjector, DestroyRef, inject, runInInjectionContext
+} from '@angular/core';
+import { Router, ActivatedRoute } from '@angular/router';
+import { MatSnackBar } from '@angular/material/snack-bar';
+
+import { Observable, Subject, Subscription, combineLatest, firstValueFrom, of } from 'rxjs';
+import { debounceTime, distinctUntilChanged, filter, map, shareReplay, take, auditTime } from 'rxjs/operators';
+
+import { Auth, Auth as FirebaseAuth, signInAnonymously } from '@angular/fire/auth';
+
+import { RoomService } from './room.service';
+import type { Role, GameMode, RoomDoc } from '@tag/types';
+import type { Player } from './player.model';
+import type { HunterScope, PlayerVM } from './room.models';
+
+import { SpawnCoordService } from '../../services/spawn-coord.service';
+import { byUid } from './room.selectors';
+import { toRoleMap } from './roles.util';
+import { doc, Firestore, getDoc } from 'firebase/firestore';
+
+@Injectable({ providedIn: 'root' })
+export class RoomFacade {
+  // === Injections
+  private readonly router   = inject(Router);
+  private readonly route    = inject(ActivatedRoute);
+  private readonly env      = inject(EnvironmentInjector);
+  private readonly auth     = inject(FirebaseAuth);
+  private readonly roomSvc  = inject(RoomService);
+  private readonly snack    = inject(MatSnackBar);
+  readonly        spawn     = inject(SpawnCoordService);
+  private readonly destroy  = inject(DestroyRef);
+
+  // === State interne
+  private subs = new Subscription();
+  private _roomId = '';
+  private _sentToPlay = false; // évite la redirection multiple
+
+  // Streams bruts
+  players$: Observable<Player[]> = of([]);
+  room$:    Observable<RoomDoc | null> = of(null);
+
+  // Dérivés
+  /** NOTE: `PlayerVM[] | null` — `null` = loading (tant que room n’a pas émis) */
+  playersVM$:   Observable<PlayerVM[] | null> = of(null);
+  isOwner$!:    Observable<boolean>;
+  canStart$!:   Observable<boolean>;
+  readyCount$!: Observable<number>;
+  totalCount$!: Observable<number>;
+  startHint$!:  Observable<string>;
+
+  // UI: états simples
+  myReady = false;
+  isStarting = false;
+  pickingHunter = false;
+  lastPickedHunter: { uid: string; displayName?: string } | null = null;
+
+  // Mode local (reflet du doc)
+  mode: GameMode = 'classic';
+
+  // Logs optionnels (debug UI)
+  writes: string[] = [];
+  private log(msg: string) {
+    const t = new Date().toLocaleTimeString();
+    this.writes = [`[${t}] ${msg}`, ...this.writes].slice(0, 30);
+  }
+
+  // Sauvegarde spawn (debounced)
+  private saveSpawn$ = new Subject<{ x: number; y: number }>();
+
+  /** Paramètre d’URL pour désactiver l’auto-redirect vers /play */
+  private get noAutoPlayParam(): boolean {
+    return this.route.snapshot.queryParamMap.get('noAutoPlay') === '1';
+  }
+
+  /** Est-ce qu'on est sur la page room de CETTE room ? */
+  private isOnRoomPage(): boolean {
+    const url = this.router.url.split('?')[0];
+    return url.startsWith(`/room/${this._roomId}`);
+  }
+
+  /** Navigation vers le lobby */
+  public goLobby(): void {
+    this.router.navigate(['/lobby']);
+  }
+
+  /** Init à partir d’un roomId (ou de l’URL si non fourni) */
+  async init(roomId?: string): Promise<void> {
+    this._roomId = roomId || (this.route.snapshot.paramMap.get('id') ?? '');
+    if (!this._roomId) {
+      this.log('roomId introuvable (init). Retour au lobby.');
+      this.router.navigate(['/lobby']);
+      return;
+    }
+
+    this._sentToPlay = false; // reset à chaque init
+
+    // Auth + ensure player doc
+    await runInInjectionContext(this.env, async () => {
+      if (!this.auth.currentUser) await signInAnonymously(this.auth);
+      const uid = this.auth.currentUser!.uid;
+      const displayName = this.auth.currentUser?.displayName || 'Joueur';
+      //console.log("log : ",this.auth.currentUser?.displayName);
+      
+      try {
+        await this.roomSvc.ensureSelfPlayerDoc(this._roomId, uid, displayName);
+        this.log(`FS ensureSelfPlayerDoc(${this._roomId}, ${uid})`);
+      } catch (e: any) {
+        this.log(`FS ensureSelfPlayerDoc — ERREUR: ${e?.message || e}`);
+      }
+    });
+
+    // Streams + dérivés
+    runInInjectionContext(this.env, () => {
+      this.players$ = this.roomSvc.players$(this._roomId);
+      this.room$    = this.roomSvc.room$(this._roomId);
+
+      const uid = this.auth.currentUser?.uid ?? '';
+
+      this.isOwner$ = this.room$.pipe(
+        map(r => !!r && r.ownerUid === uid),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
+
+      this.canStart$ = combineLatest([this.players$, this.room$]).pipe(
+        auditTime(16),
+        map(([players, room]) =>
+          !!room &&
+          room.state !== 'running' &&
+          Array.isArray(players) &&
+          players.length >= 2 &&
+          players.every(p => !!p.ready)
+        ),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
+
+      // *** Anti-flicker: tant que room == null => VM == null (état "loading")
+      this.playersVM$ = combineLatest([this.players$, this.room$]).pipe(
+        map(([players, room]) => {
+          if (!room) return null;
+
+          const roles = toRoleMap(room.roles); // Record<string, Role>
+          const humans: PlayerVM[] = (players ?? [])
+            .slice()
+            .sort(byUid)
+            .map(p => ({
+              ...p,
+              // rôle résolu : priorise p.role, sinon rôle de la room
+              roleResolved: (p.role ?? roles[p.uid] ?? null) as PlayerVM['roleResolved'],
+            }));
+
+          return humans;
+        }),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
+
+      this.readyCount$ = this.players$.pipe(
+        map(ps => ps.filter(p => !!p.ready).length),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
+
+      this.totalCount$ = this.players$.pipe(
+        map(ps => ps.length),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
+
+      this.startHint$ = combineLatest([this.players$, this.room$]).pipe(
+        auditTime(16),
+        map(([players, room]) => {
+          if (!room) return 'Chargement de la salle…';
+          if (room.state === 'running') return 'La partie est déjà en cours.';
+          if (!players?.length) return 'Aucun joueur pour le moment…';
+          const notReady = players.filter(p => !p.ready).map(p => p.displayName || p.uid);
+          return notReady.length ? `En attente: ${notReady.join(', ')}` : '';
+        }),
+        shareReplay({ bufferSize: 1, refCount: true })
+      );
+    });
+
+    // Suivre mon état ready (MAJ locale)
+    this.subs.add(
+      this.players$.subscribe(ps => {
+        const myUid = this.auth.currentUser?.uid;
+        if (!myUid) return;
+        const me = ps.find(p => p.uid === myUid);
+        if (typeof me?.ready === 'boolean') this.myReady = me.ready;
+      })
+    );
+
+    // Naviguer quand la room démarre + synchro du mode (safe & one-shot)
+    this.subs.add(
+      this.room$.subscribe(r => {
+        if (!r) return;
+
+        // Synchro du mode local
+        const m = r.mode as GameMode | undefined;
+        if (m && this.mode !== m) this.mode = m;
+
+        // Auto-redirect vers /play/:id (une seule fois)
+        if (!this.noAutoPlayParam && !this._sentToPlay && this.isOnRoomPage()) {
+          if (r.state === 'running') {
+            this._sentToPlay = true;
+            this.log(`NAV → /play/${this._roomId}`);
+            this.router.navigate(['/play', this._roomId]);
+          }
+        }
+      })
+    );
+
+    // Sauvegarde spawn debounce
+    this.subs.add(
+      this.saveSpawn$
+        .pipe(
+          debounceTime(250),
+          distinctUntilChanged((a, b) => a.x === b.x && a.y === b.y)
+        )
+        .subscribe(async (xy) => {
+          const uid = this.auth.currentUser?.uid; if (!uid) return;
+          try {
+            await this.roomSvc.setMySpawn(this._roomId, uid, xy);
+            this.log(`FS setMySpawn(${xy.x}, ${xy.y})`);
+          } catch (e: any) {
+            this.log(`setMySpawn — ERREUR: ${e?.message || e}`);
+          }
+        })
+    );
+
+    // Auto-nettoyage
+    this.destroy.onDestroy(() => this.subs.unsubscribe());
+  }
+
+  // === Actions exposées au template ===
+
+  trackPlayer = (_: number, p: Player) => p.uid;
+
+  onSpawnChange(xy: { x: number; y: number }) {
+    this.spawn.set(xy);
+    this.saveSpawn$.next(xy);
+  }
+
+  async toggleReady(): Promise<void> {
+    const uid = this.auth.currentUser?.uid;
+    if (!uid) return;
+    try {
+      await this.roomSvc.toggleReady(this._roomId, uid, !this.myReady);
+      this.log(`FS toggleReady(${!this.myReady})`);
+      this.myReady = !this.myReady; // MAJ optimiste
+    } catch (e: any) {
+      this.log(`FS toggleReady — ERREUR: ${e?.message || e}`);
+    }
+  }
+
+  async start(): Promise<void> {
+    if (this.isStarting) return;
+    this.isStarting = true;
+    try {
+      await this.roomSvc.start(this._roomId);
+      this.log('FS start() → state="running"');
+    } catch (e: any) {
+      this.log(`start() — ERREUR: ${e?.message || e}`);
+    } finally {
+      this.isStarting = false;
+    }
+  }
+
+  async setMode(m: GameMode) {
+    try {
+      await this.roomSvc.setMode(this._roomId, m);
+      this.mode = m;
+      this.log(`FS setMode(${m})`);
+    } catch (e: any) {
+      this.log(`setMode — ERREUR: ${e?.message || e}`);
+    }
+  }
+
+  async endNow() {
+    try {
+      await this.roomSvc.setState(this._roomId, 'ended');
+      this.log('FS setState(ended)');
+    } catch (e: any) {
+      this.log(`endNow — ERREUR: ${e?.message || e}`);
+    }
+  }
+
+  async pickHunter(scope: HunterScope): Promise<void> {
+    if (this.pickingHunter) return;
+    this.pickingHunter = true;
+    try {
+      const picked = await this.chooseRandomHunter(scope);
+      this.lastPickedHunter = picked || null;
+      const name = picked?.displayName || picked?.uid || 'inconnu';
+      this.snack.open(`Chasseur choisi : ${name}`, 'OK', { duration: 2500 });
+    } catch (e: any) {
+      this.snack.open(`Impossible de choisir le chasseur : ${e?.message || e}`, 'OK', { duration: 3500 });
+    } finally {
+      this.pickingHunter = false;
+    }
+  }
+
+  // === Détails privés ===
+
+  private async chooseRandomHunter(scope: HunterScope = 'all') {
+    try {
+      const list = await firstValueFrom(
+        this.playersVM$.pipe(filter(arr => Array.isArray(arr) && arr.length > 0), take(1))
+      );
+      if (list === null) throw new Error('Liste de joueurs introuvable.');
+
+      const allPlayers = list.filter(p => p?.uid && !String(p.uid).startsWith('bot-'));
+      const readyPlayers = allPlayers.filter(p => !!p.ready);
+
+      let pool = allPlayers;
+      if (scope === 'ready') pool = readyPlayers.length ? readyPlayers : allPlayers;
+
+      if (!pool.length) throw new Error('Aucun joueur éligible au tirage.');
+
+      const idx = Math.floor(Math.random() * pool.length);
+      const hunterUid = pool[idx].uid;
+
+      // 👉 Utiliser Role EN partout; accepte FR en entrée (si jamais)
+      const roles: Record<string, Role> = {};
+      for (const p of allPlayers) {
+        roles[p.uid] = p.uid === hunterUid ? 'hunter' : 'prey';
+      }
+
+      await this.roomSvc.applyRoles(this._roomId, roles);
+
+      const chosen = pool[idx];
+      return { uid: chosen.uid, displayName: chosen.displayName };
+    } catch (e: any) {
+      this.log(`Owner: tirage chasseur — ERREUR: ${e?.message || e}`);
+      throw e;
+    }
+  }
+
+  // Entrées numériques directes
+  onInputX(v: string) { const n = Number(v); if (Number.isFinite(n)) this.spawn.setX(n); }
+  onInputY(v: string) { const n = Number(v); if (Number.isFinite(n)) this.spawn.setY(n); }
+
+
+  /** Toggle le rôle du joueur ciblé.
+   *  - Si `isCurrentlyHunter` ⇒ passe en 'prey' (peut laisser 0 chasseur).
+   *  - Sinon ⇒ définit CE joueur 'hunter' et met tous les autres humains en 'prey'.
+   *  Retourne le nouveau rôle appliqué au joueur.
+   */
+  async toggleHunter(targetUid: string, isCurrentlyHunter: boolean): Promise<Role> {
+    if (!this._roomId) throw new Error('Room non initialisée');
+
+    // Récupère la room courante (pour les rôles actuels) et la liste des joueurs humains
+    const [room, players] = await Promise.all([
+      firstValueFrom(this.room$.pipe(take(1))),
+      firstValueFrom(this.players$.pipe(take(1))),
+    ]);
+    if (!room) throw new Error('Room introuvable');
+
+    // UIDs humains uniquement (on ignore les bots: uid "bot-*")
+    const humanUids = (players ?? [])
+      .map(p => p.uid)
+      .filter(uid => !!uid && !String(uid).startsWith('bot-'));
+
+    if (!humanUids.includes(targetUid)) {
+      throw new Error('Joueur cible introuvable (ou est un bot).');
+    }
+
+    const nextRoles: Record<string, Role> = {};
+
+    if (isCurrentlyHunter) {
+      // ➜ on rend la cible 'prey' (les autres conservent leur statut actuel s'il existe)
+      for (const uid of humanUids) {
+        if (uid === targetUid) { nextRoles[uid] = 'prey'; continue; }
+        const current = (room.roles as Record<string, Role> | undefined)?.[uid];
+        nextRoles[uid] = (current === 'hunter' || current === 'prey') ? current : 'prey';
+      }
+    } else {
+      // ➜ on force un seul chasseur: la cible 'hunter', les autres 'prey'
+      for (const uid of humanUids) {
+        nextRoles[uid] = (uid === targetUid) ? 'hunter' : 'prey';
+      }
+    }
+
+    await this.roomSvc.applyRoles(this._roomId, nextRoles);
+    this.log(`Owner: toggle hunter → ${targetUid} = ${nextRoles[targetUid]}`);
+    return nextRoles[targetUid];
+  }
+
+
+
+
+}
+
+===== FILE: room.imports.ts (3864 bytes) | generated 2025-10-31 17:14:15.543 UTC =====
+// room.imports.ts
+
+import { MatButtonModule } from '@angular/material/button';
+import { MatCardModule } from '@angular/material/card';
+import { MatDividerModule } from '@angular/material/divider';
+import { MatIconModule } from '@angular/material/icon';
+import { MatListModule } from '@angular/material/list';
+import { MatMenuModule } from '@angular/material/menu';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSelectModule } from '@angular/material/select';
+import { MatToolbarModule } from '@angular/material/toolbar';
+import { MatTooltipModule } from '@angular/material/tooltip';
+
+// --- Angular core (séparer les types purs) ---
+export {
+  Component, ChangeDetectionStrategy, inject, Input,
+  EnvironmentInjector, runInInjectionContext, ChangeDetectorRef, NgZone, DestroyRef
+} from '@angular/core';
+export type { OnInit, OnDestroy } from '@angular/core';
+
+// --- Router ---
+export { Router, ActivatedRoute } from '@angular/router';
+
+// --- Common ---
+export { AsyncPipe, CommonModule } from '@angular/common';
+
+// --- RxJS (valeurs, OK) ---
+export { Observable, Subscription, combineLatest, of, Subject, firstValueFrom } from 'rxjs';
+export { map, filter, take, shareReplay, debounceTime, distinctUntilChanged, switchMap, startWith } from 'rxjs/operators';
+
+// --- Interop ---
+export { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+
+// --- Material ---
+export { MatToolbarModule } from '@angular/material/toolbar';
+export { MatButtonModule } from '@angular/material/button';
+export { MatIconModule } from '@angular/material/icon';
+export { MatCardModule } from '@angular/material/card';
+export { MatListModule } from '@angular/material/list';
+export { MatProgressBarModule } from '@angular/material/progress-bar';
+export { MatTooltipModule } from '@angular/material/tooltip';
+export { MatMenuModule } from '@angular/material/menu';
+export { MatSelectModule } from '@angular/material/select';
+export { MatDividerModule } from '@angular/material/divider';
+export { MatSnackBar } from '@angular/material/snack-bar';
+export { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+
+// Regroupement pratique pour @Component.imports
+export const MAT = [
+  MatToolbarModule,
+  MatButtonModule,
+  MatIconModule,
+  MatCardModule,
+  MatListModule,
+  MatProgressBarModule,
+  MatTooltipModule,
+  MatMenuModule,
+  MatSelectModule,
+  MatDividerModule,
+  MatProgressSpinnerModule,
+  
+] as const;
+
+// --- Firebase Auth (valeurs) ---
+export { Auth as FirebaseAuth, signInAnonymously, authState } from '@angular/fire/auth';
+
+// --- UI (valeurs) ---
+export { MapPickerComponent } from './ui/map-picker.component';
+
+// --- Services/Utils (valeurs) ---
+export { SpawnCoordService } from '../../services/spawn-coord.service';
+export { OwnerActionsService } from './owner-actions.service';
+export { RoomLogger } from './room-logger';
+export { inZone } from './in-zone.operator';
+
+// --- Modèles & types partagés (@tag/types) ---
+// ⚠️ Interfaces / type alias => 'export type'
+export type {
+  RoomDoc,
+  Role,
+  GameMode,
+  PlayerDoc,
+  Position,
+  PositionMap,
+          // union d’événements
+  BaseEvent,        // BaseEvent<T extends string>
+  TagHitEvent,      // ex. BaseEvent<'tag/hit'>
+  EventType,        // union des clés possibles
+} from '@tag/types';
+
+// --- Services métier (valeurs) ---
+export { RoomService } from './room.service';
+
+// ❌ ne plus ré-exporter Role depuis room.service ni RoomDoc depuis models/room.model
+// export type { Role } from './room.service';
+// export type { RoomDoc } from '././models/room.model';
+
+// Type UI local (spécifique à l’app)
+export type { Player } from './player.model';
+
+===== FILE: room.models.ts (198 bytes) | generated 2025-10-31 17:14:15.544 UTC =====
+import type { Player } from './player.model';
+import type { Role } from '@tag/types';
+
+export type HunterScope = 'all' | 'ready';
+export type PlayerVM = Player & { roleResolved: Role | null };
+
+===== FILE: room.selectors.ts (1019 bytes) | generated 2025-10-31 17:14:15.545 UTC =====
+import type { Player } from './player.model';
+import type { RoomDoc } from '@tag/types';
+import { toRoleMap } from './role-mapper.util';
+
+export const byUid = (a: any, b: any) => (a?.uid || '').localeCompare(b?.uid || '');
+
+export function shallowEqPlayers(a: Player[] = [], b: Player[] = []) {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const pa = a[i], pb = b[i];
+    if (pa.uid !== pb.uid || pa.ready !== pb.ready || pa.role !== pb.role || pa.displayName !== pb.displayName) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function shallowEqRoom(a: RoomDoc | null, b: RoomDoc | null) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  // Compare seulement ce qu’on consomme ici
+  const keysA = Object.keys(toRoleMap(a.roles)).join('|');
+  const keysB = Object.keys(toRoleMap(b.roles)).join('|');
+  return a.state === b.state && a.mode === b.mode && a.ownerUid === b.ownerUid && keysA === keysB;
+}
+
+===== FILE: room.service.ts (9055 bytes) | generated 2025-10-31 17:14:15.547 UTC =====
+﻿import { Injectable, EnvironmentInjector, runInInjectionContext } from '@angular/core';
+import {
+  Firestore,
+  doc, getDoc, setDoc, updateDoc, writeBatch,
+  collection, getDocs, collectionData, docData,
+  serverTimestamp,
+  query,
+  where,
+  getDocFromCache
+} from '@angular/fire/firestore';
+import { Observable, defer, map, tap, shareReplay } from 'rxjs';
+
+import type { RoomDoc, Role, GameMode } from '@tag/types';
+import type { Player } from '../room/player.model';
+
+export type RoomState = RoomDoc['state']; // 'idle' | 'running' | 'ended'
+
+@Injectable({ providedIn: 'root' })
+export class RoomService {
+  constructor(
+    private env: EnvironmentInjector,
+    private fs: Firestore,
+  ) {}
+  private ensureInFlight = new Map<string, Promise<void>>();
+
+  /** Flux temps réel du document room */
+  room$(roomId: string): Observable<RoomDoc | null> {
+    return defer(() =>
+      runInInjectionContext(this.env, () => {
+        const r = doc(this.fs, `rooms/${roomId}`);
+        return docData(r).pipe(
+          map(d => (d ?? null) as RoomDoc | null),
+          shareReplay({ bufferSize: 1, refCount: true }),
+        );
+      })
+    );
+  }
+
+  /** Flux temps réel des joueurs (idField → injecte 'uid' côté client) */
+  players$ = (roomId: string): Observable<Player[]> => {
+    return defer(() =>
+      runInInjectionContext(this.env, () => {
+        const coll = collection(this.fs, `rooms/${roomId}/players`);
+        return collectionData(coll, { idField: 'uid' }) as Observable<Player[]>;
+      })
+    );
+  };
+
+  private roomRef(roomId: string) {
+    return doc(this.fs, `rooms/${roomId}`);
+  }
+  private playerRef(roomId: string, uid: string) {
+    return doc(this.fs, `rooms/${roomId}/players/${uid}`);
+  }
+
+  ensureSelfPlayerDoc(roomId: string, uid: string, displayName?: string): Promise<void> {
+    const key = `${roomId}/${uid}`;
+    const name = (displayName ?? '').trim();
+    if (!name) return Promise.resolve();
+
+    const inflight = this.ensureInFlight.get(key);
+    if (inflight) return inflight;
+
+    const p = runInInjectionContext(this.env, async () => {
+      const ref = this.playerRef(roomId, uid);
+
+      try {
+        const snap = await getDocFromCache(ref);
+        if (snap.exists()) {
+          const curr = (snap.data()?.['displayName'] ?? '').trim();
+          if (curr === name) return;
+        }
+      } catch {}
+
+      await setDoc(ref, { displayName: name }, { merge: true });
+    }).finally(() => {
+      this.ensureInFlight.delete(key);
+    });
+
+    this.ensureInFlight.set(key, p);
+    return p;
+  }
+
+  /** Met à jour uniquement le champ `ready` de ce joueur */
+  async toggleReady(roomId: string, uid: string, ready: boolean) {
+    return runInInjectionContext(this.env, async () => {
+      await updateDoc(this.playerRef(roomId, uid), { ready });
+    });
+  }
+
+  /** Helper interne: détecte s'il existe déjà un chasseur */
+  private hasHunter(room: Partial<RoomDoc> | null | undefined, players: Player[]): boolean {
+    if (!players?.length) return false;
+    if (players.some(p => p.role === 'hunter')) return true;
+    const roles = room?.roles ?? {};
+    return Object.values(roles).some(r => r === 'hunter');
+  }
+
+  /** Helper interne: owner > ready > premier (sync) */
+  private pickHunterUidSync(room: RoomDoc, players: Player[]): string {
+    if (room.ownerUid && players.some(p => p.uid === room.ownerUid)) return room.ownerUid;
+    const ready = players.filter(p => !!p.ready);
+    if (ready.length) return ready[0].uid;
+    return players[0].uid;
+  }
+
+  /** Garanti: >=1 chasseur. (Batch non-transactionnel) */
+  async ensureAtLeastOneHunter(roomId: string): Promise<void> {
+    return runInInjectionContext(this.env, async () => {
+      const roomSnap = await getDoc(this.roomRef(roomId));
+      if (!roomSnap.exists()) return;
+      const room = roomSnap.data() as RoomDoc;
+
+      const playersSnap = await getDocs(collection(this.fs, `rooms/${roomId}/players`));
+      const players = playersSnap.docs
+        .map(d => ({ ...(d.data() as Player) }))
+        .filter(p => !!p.uid);
+
+      if (!players.length) return;
+      if (this.hasHunter(room, players)) return;
+
+      const hunterUid = this.pickHunterUidSync(room, players);
+      const roles: Record<string, Role> = {};
+      for (const p of players) roles[p.uid] = (p.uid === hunterUid ? 'hunter' : 'prey');
+
+      const batch = writeBatch(this.fs);
+      batch.update(this.roomRef(roomId), { roles, rolesUpdatedAt: serverTimestamp() });
+      for (const p of players) {
+        batch.set(this.playerRef(roomId, p.uid), { role: roles[p.uid] }, { merge: true });
+      }
+      await batch.commit();
+    });
+  }
+
+  /** Démarre: garantit un chasseur puis passe la room à 'running' avec timer/score */
+  async start(roomId: string, opts?: { targetScore?: number; roundMs?: number }) {
+    return runInInjectionContext(this.env, async () => {
+      await this.ensureAtLeastOneHunter(roomId);
+
+      const roundMs = opts?.roundMs ?? 60_000;
+      const roundEndAtMs = Date.now() + roundMs;
+
+      await updateDoc(this.roomRef(roomId), {
+        state: 'running' as RoomState,
+        targetScore: opts?.targetScore ?? 5,
+        roundEndAtMs,
+        startedAt: serverTimestamp(),
+      });
+    });
+  }
+
+  /** Sauvegarde mon point de départ (dans mon doc player) */
+  async setMySpawn(roomId: string, uid: string, spawn: { x: number; y: number }) {
+    return runInInjectionContext(this.env, async () => {
+      await updateDoc(this.playerRef(roomId, uid), {
+        spawn: {
+          x: Math.max(-50, Math.min(50, Math.round(spawn.x))),
+          y: Math.max(-50, Math.min(50, Math.round(spawn.y))),
+        },
+      });
+    });
+  }
+
+  async setSpawn(roomId: string, uid: string, spawn: { x: number; y: number }) {
+    return runInInjectionContext(this.env, async () => {
+      await updateDoc(this.playerRef(roomId, uid), { spawn: { x: spawn.x, y: spawn.y } });
+    });
+  }
+
+  /**
+   * Applique des rôles fournis (construits côté composant avec playersVM$).
+   * Owner-only (tes règles). N'effectue AUCUNE lecture Firestore ici.
+   */
+  async applyRoles(roomId: string, roles: Record<string, Role>): Promise<void> {
+    return runInInjectionContext(this.env, async () => {
+      await updateDoc(this.roomRef(roomId), { roles, rolesUpdatedAt: serverTimestamp() });
+      // Optionnel: refléter sur chaque player
+      const batch = writeBatch(this.fs);
+      for (const [uid, role] of Object.entries(roles)) {
+        batch.set(this.playerRef(roomId, uid), { role }, { merge: true });
+      }
+      await batch.commit();
+    });
+  }
+
+  async setMode(roomId: string, mode: GameMode) {
+    const ref = doc(this.fs, `rooms/${roomId}`);
+    await updateDoc(ref, { mode, updatedAt: serverTimestamp() });
+  }
+
+  getMode$(roomId: string): Observable<GameMode | undefined> {
+    return defer(() =>
+      runInInjectionContext(this.env, () => {
+        const ref = doc(this.fs, `rooms/${roomId}`);
+        return (docData(ref) as Observable<RoomDoc>).pipe(
+          map(room => room?.mode as GameMode | undefined)
+        );
+      })
+    );
+  }
+
+  async setState(roomId: string, state: RoomState | 'in-progress') {
+    const ref = doc(this.fs, `rooms/${roomId}`);
+    await updateDoc(ref, { state, updatedAt: serverTimestamp() });
+  }
+
+  /** Seul le owner devrait appeler cette méthode (les rules le garantissent) */
+  async setHunter(roomId: string, targetUid: string): Promise<void> {
+    const roomRef = doc(this.fs, 'rooms', roomId);
+    await updateDoc(roomRef, {
+      hunterUid: targetUid,
+      [`roles.${targetUid}`]: 'hunter',
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  /** Fallback si le chasseur quitte: remettre au owner */
+  async ensureHunter(roomId: string, ownerUid: string, currentHunterUid: string | null, players: Player[]): Promise<void> {
+    if (currentHunterUid && players.some(p => p.uid === currentHunterUid)) return;
+    await this.setHunter(roomId, ownerUid);
+  }
+
+  async setRole(roomId: string, uid: string, role: Role): Promise<void> {
+    // Écrit à la fois dans room.roles et dans le doc player
+    return this.setPlayerRole(roomId, uid, role);
+  }
+
+  /** Écrit plusieurs rôles d'un coup (merge partiel) */
+  async setRoles(roomId: string, roles: Record<string, Role>): Promise<void> {
+    const roomRef = doc(this.fs, 'rooms', roomId);
+    const payload: any = { updatedAt: serverTimestamp() };
+    for (const [uid, role] of Object.entries(roles)) {
+      payload[`roles.${uid}`] = role;
+    }
+    await updateDoc(roomRef, payload);
+  }
+
+  async setPlayerRole(roomId: string, uid: string, role: Role): Promise<void> {
+    return runInInjectionContext(this.env, async () => {
+      const now   = serverTimestamp();
+      const batch = writeBatch(this.fs);
+
+      // room.roles.<uid> + updatedAt
+      batch.update(this.roomRef(roomId), {
+        [`roles.${uid}`]: role,
+        updatedAt: now,
+      } as any);
+
+      // players/<uid>.role (merge)
+      batch.set(this.playerRef(roomId, uid), { role, updatedAt: now } as any, { merge: true });
+
+      await batch.commit();
+    });
+  }
+}
+
+===== FILE: room.types.ts (858 bytes) | generated 2025-10-31 17:14:15.548 UTC =====
+// src/app/pages/room/room.types.ts
+import type { Role, RolesMap, RoomDoc, PlayerDoc } from '@tag/types';
+
+/** Alias sémantique pour l’UI (le FR est identique aux valeurs Role) */
+export type RoleFR = Role;                  // 'hunter' | 'prey'
+export type RoleAny = Role;                 // aligné sur @tag/types
+export type HunterScope = 'all' | 'ready';
+
+export interface PlayerVM {
+  uid: string;
+  displayName: string;
+  ready: boolean;
+  /** Rôle brut (s’il vient du player doc ou de la room) */
+  role?: RoleAny;
+  /** Rôle normalisé pour l’affichage */
+  roleResolved: RoleFR | null;
+  score: number;
+  iFrameUntilMs?: number;
+  spawn?: { x: number; y: number };
+  cantTagUntilMs?: number;
+}
+
+/** Types de domaine ré-exportés quand utile dans le module Room */
+export type { Role, RolesMap, RoomDoc, PlayerDoc };
+
+===== FILE: ui\map-picker.component.html (1290 bytes) | generated 2025-10-31 17:14:15.549 UTC =====
+<!-- Contrôles XY -->
+<!-- <div class="xy-controls" aria-label="Saisir les coordonnées cartésiennes">
+  <mat-form-field appearance="outline" class="xy-field">
+    <mat-label>X</mat-label>
+    <input
+      matInput
+      type="number"
+      inputmode="numeric"
+      [value]="localXY().x"
+      (input)="onXInput($any($event.target).value)"
+      (blur)="onXBlur()"
+      (keyup.enter)="commitX()"
+      aria-label="Coordonnée X"
+      min="-50" max="50" step="1" />
+    <mat-hint>−50 à 50</mat-hint>
+  </mat-form-field>
+
+  <mat-form-field appearance="outline" class="xy-field">
+    <mat-label>Y</mat-label>
+    <input
+      matInput
+      type="number"
+      inputmode="numeric"
+      [value]="localXY().y"
+      (input)="onYInput($any($event.target).value)"
+      (blur)="onYBlur()"
+      (keyup.enter)="commitY()"
+      aria-label="Coordonnée Y"
+      min="-50" max="50" step="1" />
+    <mat-hint>−50 à 50</mat-hint>
+  </mat-form-field>
+</div> -->
+
+<!-- Canvas interactif (garde le plan cartésien) -->
+<canvas #cv
+        class="map-canvas"
+        (pointerdown)="onPointerDown($event)"
+        (pointermove)="onPointerMove($event)"
+        (pointerup)="endDrag($event)"
+        (pointerleave)="endDrag($event)"
+        aria-label="Sélection du point sur le plan">
+</canvas>
+
+===== FILE: ui\map-picker.component.scss (954 bytes) | generated 2025-10-31 17:14:15.549 UTC =====
+:host {
+  display: block;
+}
+
+/* Grille des champs X/Y */
+.xy-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .75rem;
+  margin-bottom: .5rem;
+
+  @media (max-width: 420px) {
+    grid-template-columns: 1fr 1fr; // reste côte à côte sur mobile
+  }
+}
+
+.xy-field {
+  min-width: 0; /* évite l’overflow sur petits écrans */
+}
+
+/* Canvas responsive, confortable au toucher */
+.map-canvas {
+  width: 100%;
+  height: clamp(240px, 45vw, 420px);
+  display: block;
+  border-radius: .75rem;
+  touch-action: none; /* drag mobile */
+  background:
+    radial-gradient(circle at 50% 50%, #ffffff08 0 25%, transparent 26%),
+    linear-gradient(#ffffff0c, #ffffff0c);
+  outline: 1px solid #ffffff14;
+}
+
+/* (Optionnel) si vous voulez surcharger les couleurs du canevas via variables globales :
+   Définissez-les dans styles.scss à :root :
+   :root {
+     --grid: #2a2a2c;
+     --axis: #3a3a3d;
+     --tick: #4a4a4d;
+     --self: #3fa7ff;
+   }
+*/
+
+===== FILE: ui\map-picker.component.ts (10112 bytes) | generated 2025-10-31 17:14:15.551 UTC =====
+import {
+  Component, ElementRef, ViewChild, NgZone, OnDestroy, AfterViewInit,
+  OnChanges, SimpleChanges, Input, Output, EventEmitter, signal
+} from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+
+export type XY = { x: number; y: number };
+
+@Component({
+  selector: 'app-map-picker',
+  standalone: true,
+  imports: [CommonModule, MatFormFieldModule, MatInputModule],
+  templateUrl: './map-picker.component.html',
+  styleUrls: ['./map-picker.component.scss'],
+})
+export class MapPickerComponent implements  OnDestroy, OnChanges {
+  @ViewChild('cv', { static: true }) cv!: ElementRef<HTMLCanvasElement>;
+
+  /** Entrée (valeur venue du parent) */
+  @Input() xy: XY = { x: 0, y: 0 };
+  /** Sortie (événement de mise à jour) */
+  @Output() xyChange = new EventEmitter<XY>();
+
+  /** État local (feedback instantané) */
+  localXY = signal<XY>({ x: 0, y: 0 });
+
+  public dragging = false;
+  private ro?: ResizeObserver;
+
+  // Plage et arrondi
+  private readonly MIN = -50;
+  private readonly MAX = 50;
+
+  // Valeurs « en cours de saisie »
+  private pendingX: number | null = null;
+  private pendingY: number | null = null;
+
+  private rafId: number | null = null;
+
+
+  constructor(private zone: NgZone) {}
+
+  // --- Cycle de vie ---
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['xy'] && this.xy) {
+      this.localXY.set(this.clampXY(this.xy));
+      this.draw();
+    }
+  }
+
+  ngAfterViewInit(): void {
+    // Installer le ResizeObserver DANS la zone Angular (ne pas tout mettre hors zone)
+    this.ro = new ResizeObserver(() => {
+      // Le DESSIN seul hors zone (perf) + coalescé
+      this.zone.runOutsideAngular(() => {
+        this.resizeCanvasToCssSize();
+        this.renderRaf();
+      });
+    });
+    this.ro.observe(this.cv.nativeElement);
+
+    // Premier sizing + premier rendu (dessin hors zone)
+    this.zone.runOutsideAngular(() => {
+      this.resizeCanvasToCssSize();
+      this.renderRaf();
+    });
+  }
+
+ /** Ajuste la taille bitmap du canvas au CSS + DPR, et fixe la transform */
+  private resizeCanvasToCssSize(): void {
+    const canvas = this.cv?.nativeElement; if (!canvas) return;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
+
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const rect = canvas.getBoundingClientRect();
+    const w = Math.max(1, Math.floor(rect.width * dpr));
+    const h = Math.max(1, Math.floor(rect.height * dpr));
+
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+      // dessiner en unités CSS grâce à la transform DPR
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+  }
+
+  /** Programme un rendu au prochain frame (coalescé) */
+  private renderRaf(): void {
+    if (this.rafId !== null) cancelAnimationFrame(this.rafId);
+    this.rafId = requestAnimationFrame(() => {
+      this.draw();
+      this.rafId = null;
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.ro?.disconnect();
+    this.dragging = false;
+  }
+
+  // --- Handlers champs X/Y ---
+  onXInput(raw: string | number) {
+    const n = this.normalize(raw);
+    this.pendingX = n;
+    this.localXY.update(v => ({ ...v, x: n })); // feedback instantané
+    this.draw();
+  }
+
+  onYInput(raw: string | number) {
+    const n = this.normalize(raw);
+    this.pendingY = n;
+    this.localXY.update(v => ({ ...v, y: n })); // feedback instantané
+    this.draw();
+  }
+
+  onXBlur() { this.commitX(); }
+  onYBlur() { this.commitY(); }
+
+  commitX() {
+    const x = this.pendingX ?? this.localXY().x;
+    this.pendingX = null;
+    this.commit({ x, y: this.localXY().y });
+  }
+
+  commitY() {
+    const y = this.pendingY ?? this.localXY().y;
+    this.pendingY = null;
+    this.commit({ x: this.localXY().x, y });
+  }
+
+  /** Applique bornes + arrondi, synchronise l’état et émet au parent */
+  private commit(xy: XY) {
+    const next = this.clampXY(this.roundXY(xy));
+    this.localXY.set(next);
+    this.draw();
+    this.xyChange.emit(next);
+  }
+
+  // --- Pointer events (canvas) ---
+  onPointerDown(e: PointerEvent) {
+    e.preventDefault();
+    this.dragging = true;
+    this.cv.nativeElement.setPointerCapture(e.pointerId);
+    this.applyPointer(e);
+  }
+
+  onPointerMove(e: PointerEvent) {
+    if (!this.dragging) return;
+    e.preventDefault();
+    this.applyPointer(e);
+  }
+
+  endDrag(e: PointerEvent) {
+    if (!this.dragging) return;
+    this.dragging = false;
+    try { this.cv.nativeElement.releasePointerCapture(e.pointerId); } catch {}
+    // Option: on peut « commit » explicitement ici,
+    // mais applyPointer() émet déjà à chaque move.
+  }
+
+  private clientToWorld(clientX: number, clientY: number): XY {
+    const rect = this.cv.nativeElement.getBoundingClientRect();
+    const xpx = clientX - rect.left;
+    const ypx = clientY - rect.top;
+
+    // Même échelle que dans draw(): repère [-50..50] sur le plus petit côté
+    const w = rect.width, h = rect.height;
+    const scale = Math.min(w, h) / 120; // 100 unités + marges
+    const cx = w / 2, cy = h / 2;
+
+    return {
+      x: (xpx - cx) / scale,
+      y: (cy - ypx) / scale, // y positif vers le haut
+    };
+  }
+
+  private applyPointer(e: PointerEvent) {
+    const { x, y } = this.clientToWorld(e.clientX, e.clientY);
+    const nx = this.clamp(this.round(x));
+    const ny = this.clamp(this.round(y));
+    this.localXY.set({ x: nx, y: ny }); // maj locale pour feedback
+    this.draw();
+    this.xyChange.emit({ x: nx, y: ny }); // notifie le parent à chaque mouvement
+  }
+
+  // --- Rendu ---
+  private draw() {
+    const canvas = this.cv?.nativeElement; if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+
+    // --- DPR + taille responsive ---
+    const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+    const rect = canvas.getBoundingClientRect();
+    const W = Math.round(rect.width * dpr);
+    const H = Math.round(rect.height * dpr);
+    if (canvas.width !== W || canvas.height !== H) {
+      canvas.width = W; canvas.height = H;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const w = rect.width, h = rect.height;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // --- Couleurs via variables CSS (avec fallback) ---
+    const css = getComputedStyle(document.documentElement);
+    const colorGrid       = css.getPropertyValue('--grid').trim()         || '#202124';
+    const colorAxis       = css.getPropertyValue('--axis').trim()         || '#f0f1f3';
+    const colorAxisStrong = css.getPropertyValue('--axis-strong').trim()  || colorAxis;
+    const colorTick       = css.getPropertyValue('--tick').trim()         || '#ffffff';
+    const labelStroke     = css.getPropertyValue('--label-stroke').trim() || 'rgba(0,0,0,0.65)';
+    const colorPoint      = css.getPropertyValue('--self').trim()         || '#3fa7ff';
+
+    // --- Repère (−50..50), échelle et centre ---
+    const scale = Math.min(w, h) / 120;
+    const cx = w / 2, cy = h / 2;
+
+    // --- GRILLE (cartésienne : y vers le HAUT) + atténuée ---
+    ctx.save();
+    ctx.globalAlpha = 0.35;        // grille plus discrète
+    ctx.strokeStyle = colorGrid;
+    ctx.lineWidth = 1;
+    for (let i = -50; i <= 50; i += 10) {
+      const X = cx + i * scale;
+      const Y = cy - i * scale; // y inversé
+      // horizontales
+      ctx.beginPath(); ctx.moveTo(cx - 50 * scale, Y); ctx.lineTo(cx + 50 * scale, Y); ctx.stroke();
+      // verticales
+      ctx.beginPath(); ctx.moveTo(X, cy - 50 * scale); ctx.lineTo(X, cy + 50 * scale); ctx.stroke();
+    }
+    ctx.restore();
+
+    // --- AXES plus visibles ---
+    ctx.strokeStyle = colorAxisStrong;
+    ctx.lineWidth = 2;             // renforce le contraste
+    ctx.beginPath(); ctx.moveTo(cx - 50 * scale, cy); ctx.lineTo(cx + 50 * scale, cy); ctx.stroke(); // X
+    ctx.beginPath(); ctx.moveTo(cx, cy - 50 * scale); ctx.lineTo(cx, cy + 50 * scale); ctx.stroke(); // Y
+
+    // --- Texte avec halo (nombres + libellés) ---
+    ctx.font = '600 12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+
+    const drawTextWithHalo = (
+      text: string,
+      x: number,
+      y: number,
+      align: CanvasTextAlign,
+      baseline: CanvasTextBaseline
+    ) => {
+      ctx.textAlign = align;
+      ctx.textBaseline = baseline;
+      // Halo
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = labelStroke;
+      ctx.strokeText(text, x, y);
+      // Remplissage
+      ctx.fillStyle = colorTick;
+      ctx.fillText(text, x, y);
+    };
+
+    // Graduations X (en bas)
+    for (let i = -50; i <= 50; i += 10) {
+      if (i === 0) continue;
+      drawTextWithHalo(String(i), cx + i * scale, cy + 4, 'center', 'top');
+    }
+
+    // Graduations Y (à gauche)
+    for (let i = -50; i <= 50; i += 10) {
+      if (i === 0) continue;
+      drawTextWithHalo(String(i), cx - 4, cy - i * scale, 'right', 'middle'); // y inversé
+    }
+
+    // Libellés X/Y
+    drawTextWithHalo('Y', cx - 2, cy - (55 * scale), 'right', 'middle');
+    drawTextWithHalo('X', cx + (55 * scale), cy, 'center', 'alphabetic');
+
+    // --- Point (utilise la convention cartésienne) ---
+    const { x, y } = this.localXY();
+    const px = cx + x * scale;
+    const py = cy - y * scale; // y inversé
+    ctx.beginPath(); ctx.fillStyle = 'rgba(63,167,255,0.15)'; ctx.arc(px, py, 12, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.fillStyle = colorPoint; ctx.arc(px, py, 6, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.strokeStyle = '#fff6'; ctx.lineWidth = 1.5; ctx.arc(px, py, 6, 0, Math.PI*2); ctx.stroke();
+  }
+
+  // --- Utils numériques ---
+  private clamp(n: number) {
+    return Math.max(this.MIN, Math.min(this.MAX, n));
+  }
+  private round(n: number) {
+    return Math.round(n);
+  }
+  private clampXY(p: XY): XY {
+    return { x: this.clamp(p.x), y: this.clamp(p.y) };
+  }
+  private roundXY(p: XY): XY {
+    return { x: this.round(p.x), y: this.round(p.y) };
+  }
+  private normalize(v: string | number): number {
+    const n = typeof v === 'number' ? v : parseFloat(v);
+    const safe = Number.isFinite(n) ? this.round(n) : 0;
+    return this.clamp(safe);
+  }
+}
+
+===== DONE (19 files) =====

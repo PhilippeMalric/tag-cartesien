@@ -27312,6 +27312,65 @@ export class Room {
 
 
 ────────────────────────────────────────────────────────────
+FILE: C:\Users\malri\tag-cartesien\src\app\core\theme.service.ts
+REL:  src\app\core\theme.service.ts
+────────────────────────────────────────────────────────────
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
+
+export type Theme = 'light' | 'dark';
+
+@Injectable({ providedIn: 'root' })
+export class ThemeService {
+  private readonly doc = inject(DOCUMENT);
+  private readonly storageKey = 'theme';
+
+  private readonly prefersDark = typeof window !== 'undefined'
+    ? window.matchMedia?.('(prefers-color-scheme: dark)').matches
+    : false;
+
+  private _theme = signal<Theme>(this.readInitial());
+  /** Signal public: 'light' | 'dark' */
+  theme = computed(() => this._theme());
+
+  constructor() {
+    // Applique immédiatement le thème (SSR-safe)
+    this.apply(this._theme());
+  }
+
+  /** Bascule clair/sombre */
+  toggle(): void {
+    const next: Theme = this._theme() === 'dark' ? 'light' : 'dark';
+    console.log(`ThemeService: bascule vers le thème '${next}'`);
+    
+    this.setTheme(next);
+  }
+
+  /** Force un thème précis */
+  setTheme(t: Theme): void {
+    this._theme.set(t);
+    this.apply(t);
+    try { localStorage.setItem(this.storageKey, t); } catch {}
+  }
+
+  private readInitial(): Theme {
+    try {
+      const saved = localStorage.getItem(this.storageKey) as Theme | null;
+      if (saved === 'dark' || saved === 'light') return saved;
+    } catch {}
+    return this.prefersDark ? 'dark' : 'light';
+  }
+
+  private apply(t: Theme): void {
+    const el = this.doc?.documentElement;
+    if (!el) return;
+    if (t === 'dark') el.setAttribute('data-theme', 'dark');
+    else el.removeAttribute('data-theme'); // revient au clair
+  }
+}
+
+
+────────────────────────────────────────────────────────────
 FILE: C:\Users\malri\tag-cartesien\src\app\dev\rtdb-probe.service.ts
 REL:  src\app\dev\rtdb-probe.service.ts
 ────────────────────────────────────────────────────────────
@@ -27990,96 +28049,53 @@ FILE: C:\Users\malri\tag-cartesien\src\app\pages\lobby\lobby.component.html
 REL:  src\app\pages\lobby\lobby.component.html
 ────────────────────────────────────────────────────────────
 <!-- Toolbar -->
-<mat-toolbar color="primary">
-  <span>Lobby</span>
+<mat-toolbar color="primary" class="toolbar">
+  <span class="title">Lobby</span>
+
+  <!-- Sélecteur de thème -->
+  <button mat-icon-button (click)="toggleTheme()" [attr.aria-label]="ariaLabel()">
+    <mat-icon fontSet="material-symbols-outlined">{{ icon() }}</mat-icon>
+  </button>
+
   <span class="spacer"></span>
+
+  <!-- Nom d’utilisateur (ouvre un dialog au clic) -->
+  <button
+    mat-stroked-button
+    class="user-btn"
+    (click)="openNameDialog()"
+    matTooltip="Modifier le nom d’affichage"
+    aria-label="Modifier le nom d’affichage">
+    <mat-icon fontSet="material-symbols-outlined" class="user-ic">person</mat-icon>
+    <span class="user-name">{{ toolbarName() }}</span>
+  </button>
+
+  <!-- Refresh -->
   <button mat-icon-button matTooltip="Rafraîchir" (click)="refresh()">
     <mat-icon fontSet="material-symbols-outlined">refresh</mat-icon>
   </button>
 </mat-toolbar>
 
 <div class="lobby-grid">
-  <!-- Carte Profil (nom d'affichage indépendant) -->
-  <mat-card class="profile-card">
-    <mat-card-header>
-      <mat-card-title>Profil</mat-card-title>
-      <mat-card-subtitle>Nom d’affichage (optionnel)</mat-card-subtitle>
-    </mat-card-header>
-
-    <mat-card-content>
-      <div class="name-edit">
-        <mat-icon fontSet="material-symbols-outlined">person</mat-icon>
-
-        @if (!editingName) {
-          <span class="display-name">{{ displayName || 'Sans nom' }}</span>
-          <button mat-icon-button (click)="startEditName()" aria-label="Modifier le nom">
-            <mat-icon fontSet="material-symbols-outlined">edit</mat-icon>
-          </button>
-        } @else {
-          <mat-form-field appearance="outline" class="name-field">
-            <input
-              matInput
-              #nameInput
-              placeholder="Ton nom"
-              [formControl]="nameCtrl"
-              maxlength="24"
-              (keydown.enter)="commitName()"
-              (blur)="commitName()" />
-            <button
-              mat-icon-button
-              matSuffix
-              (click)="commitName()
-              "
-              [disabled]="nameCtrl.invalid"
-              aria-label="Enregistrer">
-              <mat-icon fontSet="material-symbols-outlined">check</mat-icon>
-            </button>
-          </mat-form-field>
-        }
-      </div>
-
-      @if (!displayName) {
-        <mat-hint>Tu peux rester anonyme si tu veux ;)</mat-hint>
-      }
-    </mat-card-content>
-  </mat-card>
+ 
 
   <!-- Créer une salle -->
-  <mat-card class="create-card">
+  <mat-card class="create-card card">
     <mat-card-header>
-      <mat-card-title>Créer une salle</mat-card-title>
-      <!-- <mat-card-subtitle>Choisis un mode puis démarre</mat-card-subtitle> -->
+      <mat-card-title class="h6">Créer une salle</mat-card-title>
     </mat-card-header>
 
     <mat-card-content>
-      <!--    <div class="row mode-picker" aria-label="Choix du mode">
-        <mat-chip-set>
-          <mat-chip-option
-            [selected]="facade.mode === 'classic'"
-            (click)="facade.mode = 'classic'">
-            classic
-          </mat-chip-option>
-
-          <mat-chip-option
-            [selected]="facade.mode === 'transmission'"
-            (click)="facade.mode = 'transmission'">
-            transmission
-          </mat-chip-option>
-
-          <mat-chip-option
-            [selected]="facade.mode === 'infection'"
-            (click)="facade.mode = 'infection'">
-            infection
-          </mat-chip-option>
-        </mat-chip-set>
-      </div> -->
-
       @if (facade.mode === 'classic') {
         <div class="row" style="margin-top: 10px;">
           <mat-form-field class="fx1" appearance="outline">
             <mat-label>Score cible</mat-label>
-            <input matInput type="number" min="1" [ngModel]="facade.targetScore"
-                   (ngModelChange)="facade.targetScore=$event" />
+            <input
+              matInput
+              type="number"
+              min="1"
+              [ngModel]="facade.targetScore"
+              (ngModelChange)="facade.targetScore=$event" />
           </mat-form-field>
         </div>
       }
@@ -28093,9 +28109,9 @@ REL:  src\app\pages\lobby\lobby.component.html
   </mat-card>
 
   <!-- Rejoindre par code -->
-  <mat-card class="join-card">
+  <mat-card class="join-card card">
     <mat-card-header>
-      <mat-card-title>Rejoindre une salle</mat-card-title>
+      <mat-card-title class="h6">Rejoindre une salle</mat-card-title>
       <mat-card-subtitle>Entre le code</mat-card-subtitle>
     </mat-card-header>
 
@@ -28103,9 +28119,11 @@ REL:  src\app\pages\lobby\lobby.component.html
       <div class="row">
         <mat-form-field class="fx1" appearance="outline">
           <mat-label>Code</mat-label>
-          <input matInput maxlength="8"
-              [value]="joinCode"
-              (input)="onJoinCodeInput($any($event.target).value)" />
+          <input
+            matInput
+            maxlength="8"
+            [value]="joinCode"
+            (input)="onJoinCodeInput($any($event.target).value)" />
         </mat-form-field>
 
         <button mat-raised-button color="accent" (click)="quickJoin()" [disabled]="!joinCode">
@@ -28116,9 +28134,9 @@ REL:  src\app\pages\lobby\lobby.component.html
   </mat-card>
 
   <!-- Liste des salles -->
-  <mat-card class="rooms-card">
+  <mat-card class="rooms-card card">
     <mat-card-header>
-      <mat-card-title>Salles récentes</mat-card-title>
+      <mat-card-title class="h6">Salles récentes</mat-card-title>
     </mat-card-header>
 
     <mat-card-content>
@@ -28129,25 +28147,30 @@ REL:  src\app\pages\lobby\lobby.component.html
           @if (rooms.length) {
             <mat-nav-list class="rooms" style="padding-bottom: 20px;">
               @for (r of rooms; track r.id) {
-                <mat-list-item class="room-item" (click)="join(r)" matRipple
-                               aria-label="Rejoindre la room {{ r.id }}">
+                <mat-list-item
+                  class="room-item"
+                  (click)="join(r)"
+                  matRipple
+                  aria-label="Rejoindre la room {{ r.id }}">
 
-                  <!-- Titre -->
+                  <!-- Titre + métas -->
                   <div matListItemTitle class="room-title">
                     <span class="room-id">#{{ r.id }}</span>
                     <span class="dot">•</span>
 
                     <!-- Joueurs avec badge -->
-                    <span class="room-players"
-                          [matBadge]="r.players ?? 0"
-                          matBadgeColor="primary"
-                          matBadgeSize="small"
-                          matBadgeOverlap="false"
-                          matBadgeDescription="Nombre de joueurs">
+                    <span
+                      class="room-players"
+                      [matBadge]="r.players ?? 0"
+                      matBadgeColor="primary"
+                      matBadgeSize="small"
+                      matBadgeOverlap="false"
+                      matBadgeDescription="Nombre de joueurs">
                       <mat-icon fontSet="material-symbols-outlined" class="meta-ic">groups</mat-icon>
                     </span>
 
                     <span class="dot">•</span>
+
                     <!-- État -->
                     @switch (r.state) {
                       @case ('running')    { <span class="state chip running">en cours</span> }
@@ -28157,10 +28180,12 @@ REL:  src\app\pages\lobby\lobby.component.html
                     }
 
                     <span class="dot">•</span>
+
                     <!-- Mode -->
                     <span class="mode chip">{{ r.mode }}</span>
 
                     <span class="dot">•</span>
+
                     <!-- Date relative -->
                     <span class="updated">maj <span class="rel">{{ r.createdAtMs | relativeTime }}</span></span>
                   </div>
@@ -28170,9 +28195,11 @@ REL:  src\app\pages\lobby\lobby.component.html
                     @if (deletingId() === r.id) {
                       <mat-progress-bar mode="indeterminate" style="width:120px"></mat-progress-bar>
                     } @else {
-                      <button mat-icon-button color="warn"
-                              (click)="$event.stopPropagation(); onDeleteRoom(r.id)"
-                              aria-label="Supprimer la room">
+                      <button
+                        mat-icon-button
+                        color="warn"
+                        (click)="$event.stopPropagation(); onDeleteRoom(r.id)"
+                        aria-label="Supprimer la room">
                         <mat-icon fontSet="material-symbols-outlined">delete</mat-icon>
                       </button>
                     }
@@ -28204,174 +28231,40 @@ REL:  src\app\pages\lobby\lobby.component.scss
   z-index: 10;
   box-shadow: 0 2px 8px rgba(0,0,0,.28);
   min-height: 56px;
+
+  .user-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    height: 36px;
+    line-height: 32px;
+    padding-inline: 10px 12px;
+    border-radius: 999px;
+    border-color: color-mix(in srgb, currentColor 18%, transparent);
+    background: color-mix(in srgb, var(--mat-sys-surface) 88%, transparent);
+    transition: background-color .15s ease, box-shadow .15s ease, transform .06s ease;
+
+    &:hover { background: color-mix(in srgb, var(--mat-sys-surface) 94%, transparent); }
+    &:active { transform: translateY(1px); }
+    &:focus-visible { outline: 2px solid color-mix(in srgb, var(--mat-sys-primary) 50%, transparent); outline-offset: 2px; }
+  }
+
+  .user-ic { font-size: 20px; margin-right: 6px; opacity: .9; }
+  .user-name {
+    max-width: 180px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-weight: 600; letter-spacing: .2px;
+    opacity: .95;
+  }
 }
+
 .title { margin-left: .5rem; font-weight: 700; letter-spacing: .2px; }
 .spacer { flex: 1 1 auto; }
 
-/* --- Page wrapper --- */
-.page {
-  max-width: 960px;
-  margin: 12px auto 96px;
-  padding: 0 12px;
-  display: grid;
-  gap: 16px;
-}
-
-/* --- Édition du nom --- */
-.name-edit {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  padding: .5rem .75rem;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--mat-sys-surface, #121212) 80%, transparent);
-}
-.name-edit .display-name {
-  font-weight: 700;
-  letter-spacing: .2px;
-}
-.name-field { width: 240px; max-width: 75vw; }
-
-/* --- Cartes --- */
+/* --- Page / cartes / grilles : mêmes styles que précédemment --- */
 .card { border-radius: 14px; }
 .card .h6 { font-weight: 700; letter-spacing: .2px; }
 
-/* --- Grilles boutons/champs --- */
-.card-grid,
-.join-grid {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 12px;
-  align-items: center;
-}
-.fx1 { min-width: 220px; }
-.btn-primary, .btn-secondary { display: inline-flex; align-items: center; gap: .5rem; }
-.btn-text { display: none; }
-@media (min-width: 420px) {
-  .btn-text { display: inline; }
-}
-
-/* --- Liste des rooms --- */
-.rooms { padding-block: 0; }
-
-/* Item : carte douce + hover subtil */
-.room-item {
-  --hover-bg: color-mix(in srgb, var(--mat-sys-primary) 6%, transparent);
-  --card-bg: color-mix(in srgb, var(--mat-sys-surface) 100%, transparent);
-  background: var(--card-bg);
-  border-radius: 14px;
-  min-height: 78px;
-  padding-block: 12px;
-  margin-block: 4px;
-  transition: background-color .18s ease, transform .08s ease, box-shadow .18s ease;
-}
-.room-item:hover { background: var(--hover-bg); box-shadow: 0 2px 10px rgba(0,0,0,.06); }
-.room-item:active { transform: translateY(1px); }
-.room-item:focus-visible { outline: 2px solid var(--mat-sys-primary); outline-offset: 3px; }
-:root.dark .room-item:hover { --hover-bg: color-mix(in srgb, var(--mat-sys-primary) 10%, transparent); }
-
-/* Avatar à gauche */
-.room-icon { margin-right: 8px; }
-.room-avatar {
-  width: 40px; height: 40px; border-radius: 12px;
-  display: grid; place-items: center;
-  background: color-mix(in srgb, var(--mat-sys-primary) 16%, transparent);
-}
-.room-avatar mat-icon { font-size: 22px; opacity: .9; }
-
-/* Titre */
-.room-title {
-  display: flex; align-items: center; gap: 8px;
-  font-weight: 700; letter-spacing: .2px;
-}
-.room-id { font-variant-numeric: tabular-nums; }
-.dot { opacity: .45; }
-
-/* Joueurs (badge) */
-.room-players { display: inline-flex; align-items: center; gap: 6px; }
-.meta-ic { font-size: 18px; height: 18px; width: 18px; opacity: .85; }
-::ng-deep .mat-badge-content { font-weight: 700; line-height: 1; }
-
-/* Chips meta */
-.room-meta { margin-top: 4px; }
-.meta-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.meta-chips mat-chip mat-icon { margin-right: 6px; }
-
-/* Chip mode : couleurs par mode */
-.mode-chip { text-transform: capitalize; }
-.mode-classic {
-  background: color-mix(in srgb, #4caf50 18%, transparent);
-  color: color-mix(in srgb, #123 20%, #000 80%);
-}
-.mode-transmission {
-  background: color-mix(in srgb, #2196f3 18%, transparent);
-  color: color-mix(in srgb, #123 20%, #000 80%);
-}
-.mode-infection {
-  background: color-mix(in srgb, #ff9800 20%, transparent);
-  color: color-mix(in srgb, #123 20%, #000 80%);
-}
-
-/* Chip état avec point lumineux */
-.state-chip { position: relative; padding-left: 6px; }
-.state-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  display: inline-block; margin-right: 6px;
-  background: color-mix(in srgb, currentColor 40%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 25%, transparent) inset;
-}
-.state-dot.is-on {
-  background: var(--mat-sys-primary);
-  box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--mat-sys-primary) 30%, transparent) inset,
-    0 0 8px color-mix(in srgb, var(--mat-sys-primary) 60%, transparent);
-}
-
-/* Actions à droite */
-.actions { display: flex; gap: 12px; align-items: center; }
-.action-btn {
-  width: 52px; height: 52px; border-radius: 50%;
-  display: inline-flex; align-items: center; justify-content: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,.12), 0 1px 3px rgba(0,0,0,.20);
-  transition: transform .08s ease, box-shadow .2s ease, filter .2s ease, background-color .2s ease;
-}
-.action-btn mat-icon { font-size: 22px; line-height: 1; }
-.action-btn:hover:not([disabled]) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0,0,0,.16), 0 2px 4px rgba(0,0,0,.24);
-}
-.action-btn:active:not([disabled]) { transform: translateY(0); filter: brightness(.98); }
-.action-btn[disabled] { filter: grayscale(.2) opacity(.75); box-shadow: none; transform: none; }
-
-/* Responsive */
-@media (max-width: 520px) {
-  .room-title { gap: 6px; flex-wrap: wrap; }
-  .actions { gap: 10px; }
-  .action-btn { width: 48px; height: 48px; }
-  .action-btn mat-icon { font-size: 21px; }
-}
-
-/* Accessibilité / motion */
-@media (prefers-reduced-motion: reduce) { .room-item { transition: none; } }
-.chip-active {
-  font-weight: 600;
-  box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 35%, transparent) inset;
-}
-
-/* --- FAB primaire (mobile) --- */
-.fab {
-  position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: 20;
-  box-shadow: 0 8px 24px rgba(0,0,0,.45);
-}
-@media (min-width: 900px) {
-  .fab { right: 24px; bottom: 24px; }
-}
-.mode-picker { margin: 8px 0 4px; }
-.mode-picker .mat-mdc-chip { text-transform: capitalize; font-weight: 600; }
-.spacer { flex: 1 1 auto; }
 .lobby-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -28379,37 +28272,39 @@ REL:  src\app\pages\lobby\lobby.component.scss
   padding: 16px;
 }
 @media (min-width: 900px) {
-  .lobby-grid {
-    grid-template-columns: 1fr 1fr;
-    align-items: start;
-  }
+  .lobby-grid { grid-template-columns: 1fr 1fr; align-items: start; }
 }
+
 .row { display: flex; gap: 12px; align-items: center; }
 .fx1 { flex: 1; }
-.mode-picker { margin: 8px 0; }
 .rooms .room-item { cursor: pointer; }
 .dot { opacity: .5; margin: 0 6px; }
 .chip { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: capitalize; }
 .chip.idle { background: var(--md-sys-color-surface-variant); }
 .chip.running { background: var(--md-sys-color-tertiary-container); }
 .chip.done { background: var(--md-sys-color-secondary-container); }
-.actions { display:flex; align-items:center; gap:6px; }
 .empty { text-align:center; padding:24px 0; }
-.name-edit { display:flex; align-items:center; gap:8px; }
-.name-edit .display-name { font-weight:600; }
-.name-edit .name-field { flex:1; min-width:220px; }
+
+/* Ligne nom / profil (lecture seule) */
+.name-line {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .5rem .75rem; border-radius: 10px;
+}
+.display-name { font-weight: 700; letter-spacing: .2px; }
+.flex-spacer { flex: 1 1 auto; }
+
+/* Badges / liste rooms : inchangé (tu peux garder tes styles existants) */
 
 
 ────────────────────────────────────────────────────────────
 FILE: C:\Users\malri\tag-cartesien\src\app\pages\lobby\lobby.component.ts
 REL:  src\app\pages\lobby\lobby.component.ts
 ────────────────────────────────────────────────────────────
-import { Component, OnInit, inject, ViewChild, ElementRef } from '@angular/core';
-import { FormsModule, ReactiveFormsModule, FormControl, Validators } from '@angular/forms';
+import { Component, OnInit, inject, computed } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { AsyncPipe, CommonModule } from '@angular/common';
 import { Observable } from 'rxjs';
 
-import { ThemeService } from '../../services/theme.service';
 import { LobbyFacade } from './lobby.facade';
 import { RoomVM } from './lobby.types';
 
@@ -28428,54 +28323,62 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatRippleModule } from '@angular/material/core';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+
 import { RelativeTimePipe } from '../../shared/pipes/relative-time.pipe';
+import { ThemeService } from 'src/app/core/theme.service';
+import { NameDialogComponent, NameDialogData, NameDialogResult } from './name-dialog.component';
 
 @Component({
   selector: 'app-lobby',
   standalone: true,
   imports: [
-    CommonModule, FormsModule, ReactiveFormsModule, AsyncPipe,
+    CommonModule, FormsModule, AsyncPipe,
     MatToolbarModule, MatCardModule, MatButtonModule, MatIconModule,
     MatListModule, MatProgressBarModule, MatFormFieldModule, MatInputModule,
     MatTooltipModule, MatDividerModule, RelativeTimePipe, MatChipsModule, MatBadgeModule,
-    MatSnackBarModule,MatRippleModule
+    MatSnackBarModule, MatRippleModule, MatDialogModule
   ],
   templateUrl: './lobby.component.html',
   styleUrls: ['./lobby.component.scss'],
 })
 export class LobbyComponent implements OnInit {
   readonly theme = inject(ThemeService);
-   facade = inject(LobbyFacade);
+  readonly dialog = inject(MatDialog);
+  facade = inject(LobbyFacade);
 
-  // === API exposée au template (conservation de ton contrat) ===
+  icon = computed(() => this.theme.theme() === 'dark' ? 'light_mode' : 'dark_mode');
+  ariaLabel = computed(() => this.theme.theme() === 'dark'
+    ? 'Activer le thème clair'
+    : 'Activer le thème sombre');
+
+  // === API exposée au template ===
   get showDevCleanup() { return this.facade.showDevCleanup; }
   cleaning = () => this.facade.cleaning();
   deletingId = () => this.facade.deletingId();
   get loading() { return this.facade.loading(); }
   get rooms$(): Observable<RoomVM[]> { return this.facade.rooms$; }
 
-  // Champs liés au template ([(ngModel)])
+  // Champs liés au template
   get displayName() { return this.facade.displayName; }
   set displayName(v: string) { this.facade.displayName = v; }
 
   get joinCode() { return this.facade.joinCode; }
   set joinCode(v: string) { this.facade.joinCode = v; }
 
-  // === Édition inline du nom ===
-  editingName = false;
-  nameCtrl = new FormControl<string>('', {
-    nonNullable: true,
-    validators: [Validators.required, Validators.maxLength(24)],
-  });
-  @ViewChild('nameInput') nameInput?: ElementRef<HTMLInputElement>;
+  /** Nom affiché dans la toolbar (fallback sobre) */
+  toolbarName() {
+    const n = this.displayName?.trim();
+    return n && n.length > 0 ? n : 'Sans nom';
+  }
 
   ngOnInit(): void {
     this.facade.init();
-    // Initialise le champ avec la valeur actuelle de la façade
-    this.nameCtrl.setValue(this.displayName ?? '');
   }
 
-  // Méthodes appelées par le template existant
+  toggleTheme() { this.theme.toggle(); }
+
+  // Méthodes appelées par le template
   refresh() { this.facade.refresh(); }
   createRoom() { this.facade.createRoom(); }
   onJoinCodeInput(v: string) { this.facade.onJoinCodeInput(v); }
@@ -28484,22 +28387,32 @@ export class LobbyComponent implements OnInit {
   cleanLobby() { this.facade.cleanLobby(); }
   onDeleteRoom(roomId: string) { this.facade.deleteRoom(roomId); }
 
-  // === Contrôles édition du nom ===
-  startEditName() {
-    this.editingName = true;
-    queueMicrotask(() => this.nameInput?.nativeElement?.focus());
-  }
+  /** Ouvre le dialog pour modifier le nom d’affichage */
+  openNameDialog() {
+    const data: NameDialogData = {
+      initialName: this.displayName ?? '',
+      maxLength: 24,
+      title: 'Nom d’affichage',
+      placeholder: 'Ton nom',
+    };
 
-  async commitName() {
-    if (this.nameCtrl.invalid) { this.editingName = false; return; }
-    const name = this.nameCtrl.value.trim();
-    if (name === (this.displayName ?? '')) { this.editingName = false; return; }
+    const ref = this.dialog.open<NameDialogComponent, NameDialogData, NameDialogResult>(NameDialogComponent, {
+      data,
+      width: '420px',
+      autoFocus: true,
+      restoreFocus: true,
+      disableClose: true,
+    });
 
-    // Mets à jour la façade (setter existant) puis sauvegarde distante
-    this.displayName = name;
-    await this.facade.saveDisplayName(name);
+    ref.afterClosed().subscribe(async (result) => {
+      if (!result || result.action !== 'save') return;
 
-    this.editingName = false;
+      const name = (result.value ?? '').trim();
+      if (name === (this.displayName ?? '')) return;
+
+      this.displayName = name;
+      await this.facade.saveDisplayName(name);
+    });
   }
 }
 
@@ -28514,13 +28427,13 @@ import { Observable, map, startWith } from 'rxjs';
 import { RoomVM } from './lobby.types';
 
 // AngularFire
-import { Auth as FirebaseAuth, updateProfile } from '@angular/fire/auth';
+import { Auth, Auth as FirebaseAuth, reload, updateProfile } from '@angular/fire/auth';
 import {
   Firestore, CollectionReference,
   collection, collectionData, doc, setDoc, query, orderBy, limit,
-  serverTimestamp
+  serverTimestamp, updateDoc
 } from '@angular/fire/firestore';
-import { Database, ref, set as rtdbSet } from '@angular/fire/database';
+import { Database, ref, update as rtdbUpdate } from '@angular/fire/database';
 
 // Services
 import { DevCleanupService } from '../../services/dev-cleanup.service';
@@ -28539,8 +28452,8 @@ export class LobbyFacade {
   private devCleanup = inject(DevCleanupService);
   private snack = inject(MatSnackBar);
 
-  private _mode = signal<GameMode>('classic');       // NEW
-  private _targetScore = signal<number>(5);          // NEW
+  private _mode = signal<GameMode>('classic');
+  private _targetScore = signal<number>(5);
 
   // getters/setters (proxies)
   get mode(): GameMode { return this._mode(); }
@@ -28573,10 +28486,9 @@ export class LobbyFacade {
   }
 
   init(): void {
-    runInInjectionContext(this.env, () => {
+    runInInjectionContext(this.env, async () => {
       const roomsCol = collection(this.db, 'rooms') as CollectionReference<any>;
       const q = query(roomsCol, orderBy('updatedAt', 'desc'), limit(50));
-      // rooms$ mapping → inclure le mode
       this.rooms$ = collectionData(q, { idField: 'id' }).pipe(
         startWith([] as any[]),
         map((rows: any[]) =>
@@ -28593,6 +28505,13 @@ export class LobbyFacade {
           }))
         )
       );
+      const user = this.auth.currentUser;
+        if (!user) return;
+
+        await updateProfile(user, { displayName: this.displayName });
+        await reload(user);
+     // this.auth.currentUser?.displayName
+
     });
   }
 
@@ -28612,7 +28531,33 @@ export class LobbyFacade {
     setTimeout(() => this.loading.set(false), 350);
   }
 
-  // Sauvegarde centralisée du displayName (Auth + users/{uid} + localStorage)
+  /** Déduit l’ID de room actif depuis l’URL (/room/:id), si présent */
+  private activeRoomId(): string | null {
+    const m = this.router.url.match(/\/room\/([^\/?#]+)/i);
+    return m?.[1] ?? null;
+  }
+
+  /** Propage le nom vers le joueur de la room active (Firestore + RTDB si dispo) */
+  private async fanOutPlayerNameToActiveRoom(name: string) {
+    const uid = this.auth.currentUser?.uid;
+    const roomId = this.activeRoomId();
+    if (!uid || !roomId) return;
+
+    // Firestore: rooms/{roomId}/players/{uid}.displayName
+    try {
+      await updateDoc(doc(this.db, 'rooms', roomId, 'players', uid), {
+        displayName: name,
+        updatedAt: serverTimestamp(),
+      });
+    } catch { /* tolérant si le doc player n’existe pas encore */ }
+
+    // RTDB (optionnel) : rooms/{roomId}/players/{uid}/name
+    try {
+      await rtdbUpdate(ref(this.rtdb, `rooms/${roomId}/players/${uid}`), { name });
+    } catch { /* ignore si chemin non présent côté RTDB */ }
+  }
+
+  // Sauvegarde centralisée du displayName (Auth + users/{uid} + localStorage) + fan-out joueur actif
   async saveDisplayName(name: string) {
     const user = this.auth.currentUser;
     const safe = (name || '').trim().slice(0, 24);
@@ -28635,6 +28580,9 @@ export class LobbyFacade {
         { displayName: safe, updatedAt: serverTimestamp() },
         { merge: true }
       );
+
+      // 3) Fan-out vers le joueur de la room active (si on est déjà dans une room)
+      await this.fanOutPlayerNameToActiveRoom(safe);
 
       this.snack.open('Nom mis à jour', 'OK', { duration: 2000 });
     } catch (e: any) {
@@ -28668,7 +28616,8 @@ export class LobbyFacade {
         displayNameOwner: name || null,
       }, { merge: true });
 
-      try { await rtdbSet(ref(this.rtdb, `roomsMeta/${roomId}/ownerUid`), uid); } catch {}
+      // RTDB meta (optionnel)
+      try { await rtdbUpdate(ref(this.rtdb, `roomsMeta/${roomId}`), { ownerUid: uid }); } catch {}
     });
 
     await this.router.navigate(['/room', roomId]);
@@ -28731,6 +28680,106 @@ export type RoomVM = {
   mode: GameMode; 
   createdAtMs: number;   // ← ajout: timestamp ms de création
 };
+
+────────────────────────────────────────────────────────────
+FILE: C:\Users\malri\tag-cartesien\src\app\pages\lobby\name-dialog.component.ts
+REL:  src\app\pages\lobby\name-dialog.component.ts
+────────────────────────────────────────────────────────────
+import { Component, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
+
+import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+
+export interface NameDialogData {
+  initialName: string;
+  maxLength: number;
+  title?: string;
+  placeholder?: string;
+}
+
+export interface NameDialogResult {
+  action: 'save' | 'cancel';
+  value?: string;
+}
+
+@Component({
+  selector: 'app-name-dialog',
+  standalone: true,
+  imports: [
+    CommonModule, ReactiveFormsModule,
+    MatDialogModule, MatFormFieldModule, MatInputModule,
+    MatButtonModule, MatIconModule
+  ],
+  template: `
+    <h2 mat-dialog-title>
+      <mat-icon fontSet="material-symbols-outlined" style="vertical-align: middle; margin-right: 6px;">person</mat-icon>
+      {{ data.title || 'Nom d’affichage' }}
+    </h2>
+
+    <div mat-dialog-content class="content">
+      <mat-form-field appearance="outline" class="w-100">
+        <mat-label>{{ data.placeholder || 'Ton nom' }}</mat-label>
+        <input
+          matInput
+          [formControl]="nameCtrl"
+          [maxlength]="data.maxLength"
+          (keydown.enter)="onSave()"
+          autocomplete="off"
+          cdkFocusInitial
+        />
+        <mat-hint align="end">{{ (nameCtrl.value?.length || 0) }} / {{ data.maxLength }}</mat-hint>
+
+        @if (nameCtrl.invalid && (nameCtrl.dirty || nameCtrl.touched)) {
+          <mat-error *ngIf="nameCtrl.hasError('required')">Le nom est requis</mat-error>
+          <mat-error *ngIf="nameCtrl.hasError('maxlength')">Max {{ data.maxLength }} caractères</mat-error>
+        }
+      </mat-form-field>
+    </div>
+
+    <div mat-dialog-actions align="end" class="actions">
+      <button mat-button (click)="onCancel()">Annuler</button>
+      <button mat-flat-button color="primary" (click)="onSave()" [disabled]="nameCtrl.invalid">Enregistrer</button>
+    </div>
+  `,
+  styles: [`
+  :host { display: block; }
+  /* ↑ évite tout collapse de marge */
+
+  /* Ajoute de l’air en haut du contenu */
+  .content { 
+    min-width: 260px; 
+    padding-top: 12px;      /* <-- clé */
+  }
+
+  .w-100 { width: 100%; margin-top: 6px; } /* petit décalage sûr du champ */
+  .actions { gap: 8px; }
+`]
+})
+export class NameDialogComponent {
+  readonly data = inject<NameDialogData>(MAT_DIALOG_DATA);
+  private readonly ref = inject(MatDialogRef<NameDialogComponent, NameDialogResult>);
+
+  nameCtrl = new FormControl<string>(this.data?.initialName ?? '', {
+    nonNullable: true,
+    validators: [Validators.required, Validators.maxLength(this.data?.maxLength ?? 24)],
+  });
+
+  onCancel() {
+    this.ref.close({ action: 'cancel' });
+  }
+
+  onSave() {
+    if (this.nameCtrl.invalid) return;
+    const value = (this.nameCtrl.value || '').trim();
+    this.ref.close({ action: 'save', value });
+  }
+}
+
 
 ────────────────────────────────────────────────────────────
 FILE: C:\Users\malri\tag-cartesien\src\app\pages\play\bot.service.ts
@@ -29415,7 +29464,6 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 // Services & utils
-import { ThemeService } from '../../services/theme.service';
 import { PositionsService } from './positions.service';
 import { RoomService } from '../room/room.service';
 import { BotService } from './bot.service';
@@ -29433,6 +29481,7 @@ import { MatchService } from './match.service';
 import { Database } from '@angular/fire/database';
 import { Subscription } from 'rxjs';
 import type { Role } from '@tag/types';
+import { ThemeService } from 'src/app/core/theme.service';
 
 @Component({
   selector: 'app-play',
@@ -32100,7 +32149,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { Observable, Subject, Subscription, combineLatest, firstValueFrom, of } from 'rxjs';
 import { debounceTime, distinctUntilChanged, filter, map, shareReplay, take, auditTime } from 'rxjs/operators';
 
-import { Auth as FirebaseAuth, signInAnonymously } from '@angular/fire/auth';
+import { Auth, Auth as FirebaseAuth, signInAnonymously } from '@angular/fire/auth';
 
 import { RoomService } from './room.service';
 import type { Role, GameMode, RoomDoc } from '@tag/types';
@@ -32110,6 +32159,7 @@ import type { HunterScope, PlayerVM } from './room.models';
 import { SpawnCoordService } from '../../services/spawn-coord.service';
 import { byUid } from './room.selectors';
 import { toRoleMap } from './roles.util';
+import { doc, Firestore, getDoc } from 'firebase/firestore';
 
 @Injectable({ providedIn: 'root' })
 export class RoomFacade {
@@ -32192,6 +32242,8 @@ export class RoomFacade {
       if (!this.auth.currentUser) await signInAnonymously(this.auth);
       const uid = this.auth.currentUser!.uid;
       const displayName = this.auth.currentUser?.displayName || 'Joueur';
+      //console.log("log : ",this.auth.currentUser?.displayName);
+      
       try {
         await this.roomSvc.ensureSelfPlayerDoc(this._roomId, uid, displayName);
         this.log(`FS ensureSelfPlayerDoc(${this._roomId}, ${uid})`);
@@ -32472,6 +32524,9 @@ export class RoomFacade {
     this.log(`Owner: toggle hunter → ${targetUid} = ${nextRoles[targetUid]}`);
     return nextRoles[targetUid];
   }
+
+
+
 
 }
 
@@ -33405,29 +33460,6 @@ private readonly roomSvc  = inject(RoomService);
 
 
 ────────────────────────────────────────────────────────────
-FILE: C:\Users\malri\tag-cartesien\src\app\services\theme.service.ts
-REL:  src\app\services\theme.service.ts
-────────────────────────────────────────────────────────────
-﻿import { Injectable, signal } from '@angular/core';
-type Theme = 'light' | 'dark';
-
-@Injectable({ providedIn: 'root' })
-export class ThemeService {
-  private _theme = signal<Theme>((localStorage.getItem('theme') as Theme) || 'dark');
-
-  current(): Theme { return this._theme(); }
-  apply(theme: Theme) {
-    this._theme.set(theme);
-    document.documentElement.dataset['theme'] = theme;
-    if (theme === 'dark') document.documentElement.classList.add('dark');
-    else document.documentElement.classList.remove('dark');
-    localStorage.setItem('theme', theme);
-  }
-  toggle() { this.apply(this._theme() === 'dark' ? 'light' : 'dark'); }
-}
-
-
-────────────────────────────────────────────────────────────
 FILE: C:\Users\malri\tag-cartesien\src\app\services\toast.service.ts
 REL:  src\app\services\toast.service.ts
 ────────────────────────────────────────────────────────────
@@ -33492,6 +33524,17 @@ REL:  src\index.html
           var el = document.documentElement;
           el.classList.toggle('dark', dark);
           el.dataset.theme = dark ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+
+      (function () {
+        try {
+          var k = 'theme';
+          var t = localStorage.getItem(k);
+          if (!t) {
+            t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+          }
+          if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
         } catch (e) {}
       })();
     </script>
@@ -33633,8 +33676,8 @@ $dark-theme: mat.define-theme((
 }
 
 /* Sombre si <html> a data-theme="dark" OU la classe .dark */
-:root[data-theme="dark"],
-:root.dark {
+:root[data-theme="dark"]
+{
   @include mat.all-component-colors($dark-theme);
   @include mat.all-component-typographies($dark-theme);
   @include mat.all-component-densities($dark-theme);
@@ -33651,8 +33694,8 @@ $dark-theme: mat.define-theme((
 
   /* Couleurs jeu – versions “light” */
   --canvas-bg: #0b0d10;
-  --grid:      color-mix(in srgb, var(--mat-sys-outline-variant) 70%, white);
-  --axis:      color-mix(in srgb, var(--mat-sys-outline-variant) 55%, white);
+  --grid:     black;
+  --axis:      black;
 
   --self:      var(--mat-sys-primary);
   --hunter:    #d32f2f;
@@ -33661,8 +33704,8 @@ $dark-theme: mat.define-theme((
 }
 
 /* Dark */
-:root[data-theme="dark"],
-:root.dark {
+:root[data-theme="dark"]
+{
   --bg:      var(--mat-sys-background);
   --fg:      white;
   --card:    var(--mat-sys-surface-container-high);
@@ -33670,8 +33713,8 @@ $dark-theme: mat.define-theme((
 
   /* Couleurs jeu – versions “dark” */
   --canvas-bg: #0b0d10;
-  --grid:      color-mix(in srgb, var(--mat-sys-outline-variant) 35%, transparent);
-  --axis:      color-mix(in srgb, var(--mat-sys-outline-variant) 50%, transparent);
+  --grid:      white;
+  --axis:      white;
 
   --self:      color-mix(in srgb, var(--mat-sys-primary) 75%, white);
   --hunter:    #ff7676;
@@ -33685,22 +33728,20 @@ html, body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-}
+} 
 
 *, *::before, *::after { box-sizing: border-box; }
 
-/* Icônes Material Symbols */
-.material-symbols-outlined {
-  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+
+
+/* Transition douce lors du switch de thème (respecte reduced motion) */
+@media (prefers-reduced-motion: no-preference) {
+  html, body {
+    transition: background-color 160ms ease, color 160ms ease;
+  }
 }
 
-:root {
-  --hunter: #ff7a00; /* orange */
-}
 
-.material-symbols-outlined {
-  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-}
 
 ────────────────────────────────────────────────────────────
 FILE: C:\Users\malri\tag-cartesien\tools\snapshot-app-functions.ps1

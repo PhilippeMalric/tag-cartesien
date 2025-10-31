@@ -28,7 +28,7 @@ export function findVictimWithinRadius(ctx: PlayCtx): { uid: string; dist: numbe
     const d = Math.hypot(p.x - ctx.me.x, p.y - ctx.me.y);
     if (d <= GAME_CONSTANTS.TAG_RADIUS && (!best || d < best.dist)) best = { uid, dist: d };
   }
-  console.log('findVictimWithinRadius best', best);
+  //console.log('findVictimWithinRadius best', best);
   
   return best;
 }

@@ -194,7 +194,7 @@ export class PlayRenderer {
     // 🟠 tolère EN/FR pour “moi”
     const r = String(state.role ?? '').toLowerCase();
 
-console.log("r",r);
+    //console.log("r",r);
 
 
     const amHunter =

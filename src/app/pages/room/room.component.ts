@@ -4,7 +4,6 @@ import {
   ChangeDetectionStrategy,
   OnInit,
   OnDestroy,
-  EnvironmentInjector,
   inject,
   input,
 } from '@angular/core';
@@ -12,11 +11,13 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { AsyncPipe, CommonModule } from '@angular/common';
 import { MapPickerComponent, MAT, MatSnackBar } from './room.imports';
 
-import { RoomFacade } from './room.facade';
 import type { PlayerVM } from './room.models';
 import type { RoomDoc, GameMode } from '@tag/types';
 import { Observable, of } from 'rxjs';
 import { MonitorBotsService } from 'src/app/core/monitor-bots.service';
+
+// ✅ nouvelle façade refactorisée (state/streams/actions) + enterRoom()
+import { RoomFacade } from './facade/room.facade';
 
 @Component({
   selector: 'app-room',
@@ -29,71 +30,95 @@ import { MonitorBotsService } from 'src/app/core/monitor-bots.service';
 export class RoomComponent implements OnInit, OnDestroy {
   // Inputs (compat HTML)
   roomId  = input<string>('');
-  isOwner = input<boolean>(false); // non utilisé directement (owner ⇒ via facade.isOwner$)
+  isOwner = input<boolean>(false); // info redondante: on lit facade.isOwner$ pour l’UI
 
   // Injections
   private readonly route  = inject(ActivatedRoute);
   private readonly router = inject(Router);
-  private readonly env    = inject(EnvironmentInjector);
   private readonly snack  = inject(MatSnackBar);
+  private readonly botsSvc = inject(MonitorBotsService);
 
-  // Façade (logique déplacée)
+  // Façade
   private readonly facade = inject(RoomFacade);
 
-  // Expositions → HTML (proxies sur la façade)
+  // Expositions → HTML
   public playersVM$: Observable<PlayerVM[] | null> = of(null);
   public isOwner$!:  Observable<boolean>;
   public canStart$!: Observable<boolean>;
 
-  public mode: GameMode = 'classic';
-  public myReady = false;
-  public pickingHunter = false; // lu/écrit via facade, on expose get/set
-  public lastPickedHunter: { uid: string; displayName?: string } | null = null;
-
-  private readonly botsSvc = inject(MonitorBotsService);
-
-  // Map Picker (le HTML utilise spawn.xy())
+  // MapPicker : on expose le service de spawn de la façade (inchangé côté template)
   public readonly spawn = this.facade.spawn;
+
+  // ---- Propriétés « simples » exposées via getters/setters pour rester réactif ----
+  get mode(): GameMode { return this.facade.mode; }
+  set mode(m: GameMode) { this.facade.mode = m; }
+
+  get myReady(): boolean { return this.facade.myReady; }
+
+  get pickingHunter(): boolean { return this.facade.pickingHunter; }
+  set pickingHunter(_v: boolean) {
+    // no-op: la valeur réelle est gérée par la façade; on garde le setter pour compat template
+  }
+
+  get lastPickedHunter(): { uid: string; displayName?: string } | null {
+    return this.facade.lastPickedHunter;
+  }
+  set lastPickedHunter(_v: { uid: string; displayName?: string } | null) {
+    // no-op (compat)
+  }
 
   // ===== Cycle de vie =====
   async ngOnInit(): Promise<void> {
     const id = this.roomId() || this.route.snapshot.paramMap.get('id') || '';
-    await this.facade.init(id);
+    // ➜ nouvelle entrée : reset + auth + wiring + (optionnel) spawn aléatoire écrit FS/RTDB
+    await this.facade.enterRoom(id, { randomOnEnter: true });
 
-    // brancher les streams/publics de la façade
-    this.playersVM$       = this.facade.playersVM$;
-    this.isOwner$         = this.facade.isOwner$;
-    this.canStart$        = this.facade.canStart$;
-    this.mode             = this.facade.mode;
-    this.myReady          = this.facade.myReady;
-    this.pickingHunter    = this.facade.pickingHunter;
-    this.lastPickedHunter = this.facade.lastPickedHunter;
+    // branchement des flux exposés par la façade
+    this.playersVM$ = this.facade.playersVM$;
+    this.isOwner$   = this.facade.isOwner$;
+    this.canStart$  = this.facade.canStart$;
   }
 
   ngOnDestroy(): void {
-    // RoomFacade s’auto-désabonne via DestroyRef
+    // Rien à faire ici : la façade nettoie ses subs via DestroyRef
   }
 
   // ===== Proxies pour garder le HTML inchangé =====
   goLobby() { this.facade.goLobby(); }
-  onSpawnChange(xy: { x:number; y:number }) { this.facade.onSpawnChange(xy); }
-  async toggleReady() { await this.facade.toggleReady(); }
-  async start() { await this.facade.start(); }
-  async setMode(m: GameMode) { await this.facade.setMode(m); this.mode = this.facade.mode; }
-  async endNow() { await this.facade.endNow(); }
+
+  onSpawnChange(xy: { x:number; y:number }) {
+    this.facade.onSpawnChange(xy);
+  }
+
+  async toggleReady() {
+    await this.facade.toggleReady();
+  }
+
+  async start() {
+    await this.facade.start();
+  }
+
+  async setMode(m: GameMode) {
+    await this.facade.setMode(m);
+    // `mode` est déjà synchronisé via le getter/setter
+  }
+
+  async endNow() {
+    await this.facade.endNow();
+  }
+
   async pickHunter(scope: 'all'|'ready') {
-    this.pickingHunter = true;
+    // le flag réel est dans la façade; on conserve la signature
     try {
       await this.facade.pickHunter(scope);
-      this.lastPickedHunter = this.facade.lastPickedHunter;
-    } finally {
-      this.pickingHunter = false;
+      // lastPickedHunter est lu via le getter
+    } catch (e: any) {
+      this.snack.open(String(e?.message || e), 'OK', { duration: 3000 });
     }
   }
 
   /**
-   * Toggle chasseur multi (bouton par joueur) — le HTML appelle déjà cette signature.
-   * On délègue à OwnerActionsService via facade (qui expose les helpers requis).
+   * Toggle chasseur multi (bouton par joueur) — signature inchangée.
    */
   public async onToggleHunter(targetUid: string, isCurrentlyHunter: boolean): Promise<void> {
     try {
@@ -101,11 +126,11 @@ export class RoomComponent implements OnInit, OnDestroy {
       const msg = (newRole === 'hunter') ? 'Défini comme chasseur' : 'Rendu chassé';
       this.snack.open(msg, 'OK', { duration: 2000 });
     } catch (e: any) {
-      this.snack.open(String(e?.message || e), 'OK', { duration: 3000 });
+      this.snack.open(`Erreur: ${String(e?.message || e)}`, 'OK', { duration: 3000 });
     }
   }
 
- /** Crée 1 bot (rôle par défaut: 'prey') dans la room courante. */
+  /** Crée 1 bot (rôle par défaut: 'prey') dans la room courante. */
   public async addBot(role: 'hunter'|'prey' = 'prey'): Promise<void> {
     const roomId = this.currentRoomId;
     if (!roomId) {
@@ -121,8 +146,8 @@ export class RoomComponent implements OnInit, OnDestroy {
   }
 
   private get currentRoomId(): string {
-    return (typeof this.roomId === 'function' ? this.roomId() : this.roomId as any) 
-          || this.route.snapshot.paramMap.get('id') 
-          || '';
+    return (typeof this.roomId === 'function' ? this.roomId() : (this.roomId as any))
+        || this.route.snapshot.paramMap.get('id')
+        || '';
   }
 }
